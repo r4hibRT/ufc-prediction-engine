@@ -25,3 +25,5 @@ data/raw/
 # OS
 .DS_Store
 Thumbs.db
+
+progress.log

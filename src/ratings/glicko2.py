@@ -72,7 +72,10 @@ def _compute_new_volatility(phi, volatility, v, delta):
         B = a - k * tau
 
     fa, fb = f(A), f(B)
-    while abs(B - A) > 1e-6:
+    max_iter = 100
+    iteration = 0
+    while abs(B - A) > 1e-6 and iteration < max_iter:
+        iteration += 1
         C = A + (A - B) * fa / (fb - fa)
         fc = f(C)
         if fc * fb < 0:
