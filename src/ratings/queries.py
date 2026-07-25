@@ -79,15 +79,18 @@ def get_career_arc(fighter_id):
     ]
 
 
-def get_p4p_rankings(limit=25):
+def get_p4p_rankings(limit=25, min_bouts=8):
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
         SELECT f.id, f.name, 
                MAX(r.rating) as peak_rating,
+               MIN(r.rd) as min_rd,
+               ROUND(MAX(r.rating) - (MIN(r.rd) * 2), 2) as adjusted_peak,
                r2.rating as current_rating,
                r2.rd as current_rd,
+               COUNT(r.id) as total_bouts,
                (SELECT b.weight_class FROM bouts b
                 JOIN ratings r3 ON r3.bout_id = b.id
                 WHERE r3.fighter_id = f.id
@@ -102,9 +105,10 @@ def get_p4p_rankings(limit=25):
             LIMIT 1
         ) r2 ON true
         GROUP BY f.id, f.name, r2.rating, r2.rd
-        ORDER BY peak_rating DESC
+        HAVING COUNT(r.id) >= %s
+        ORDER BY (MAX(r.rating) - (MIN(r.rd) * 2)) DESC
         LIMIT %s;
-    """, (limit,))
+    """, (min_bouts, limit))
 
     rows = cur.fetchall()
     cur.close()
@@ -115,9 +119,12 @@ def get_p4p_rankings(limit=25):
             "fighter_id": row[0],
             "name": row[1],
             "peak_rating": row[2],
-            "current_rating": row[3],
-            "current_rd": row[4],
-            "primary_division": row[5],
+            "min_rd": row[3],
+            "adjusted_peak": row[4],
+            "current_rating": row[5],
+            "current_rd": row[6],
+            "total_bouts": row[7],
+            "primary_division": row[8],
             "rank": i + 1
         }
         for i, row in enumerate(rows)
