@@ -16,7 +16,6 @@ def parse_fight_duration(round_, time_str):
 def compute_fighter_features():
     conn = get_connection()
 
-    # Pull all bout stats with bout context
     query = """
         SELECT 
             bs.fighter_id,
@@ -42,7 +41,6 @@ def compute_fighter_features():
 
     df = pd.read_sql(query, conn)
 
-    # Get opponent stats by self-joining
     opponent_query = """
         SELECT 
             bs.bout_id,
@@ -58,11 +56,7 @@ def compute_fighter_features():
     conn.close()
 
     # Merge opponent stats
-    df = df.merge(
-        opp_df,
-        on="bout_id",
-        suffixes=("", "_opp")
-    )
+    df = df.merge(opp_df, on="bout_id", suffixes=("", "_opp"))
     df = df[df["fighter_id"] != df["opponent_id"]]
 
     # Compute fight duration
@@ -74,21 +68,25 @@ def compute_fighter_features():
 
     # Win/finish flags
     df["is_win"] = df["winner_id"] == df["fighter_id"]
-    df["is_finish"] = df["is_win"] & df["method"].isin(["KO/TKO", "Submission"])
+    df["is_ko_win"] = df["is_win"] & df["method"].isin(["KO/TKO"])
+    df["is_sub_win"] = df["is_win"] & df["method"].isin(["Submission"])
+    df["is_decision_win"] = df["is_win"] & df["method"].isin(["Decision"])
 
     # Aggregate per fighter
     agg = df.groupby("fighter_id").agg(
         total_fights=("bout_id", "count"),
         total_wins=("is_win", "sum"),
-        total_finishes=("is_finish", "sum"),
+        total_ko_wins=("is_ko_win", "sum"),
+        total_sub_wins=("is_sub_win", "sum"),
+        total_decision_wins=("is_decision_win", "sum"),
         total_knockdowns=("knockdowns", "sum"),
         sig_landed=("sig_strikes_landed", "sum"),
         sig_attempted=("sig_strikes_attempted", "sum"),
         takedowns_landed=("takedowns_landed", "sum"),
         takedowns_attempted=("takedowns_attempted", "sum"),
-        submission_attempts=("submission_attempts", "sum"),
-        control_time_seconds=("control_time_seconds", "sum"),
         opp_sig_landed=("opp_sig_strikes_landed", "sum"),
+        opp_td_landed=("opp_takedowns_landed", "sum"),
+        opp_td_attempted=("opp_takedowns_attempted", "sum"),
         total_fight_mins=("fight_mins", "sum"),
     ).reset_index()
 
@@ -101,10 +99,10 @@ def compute_fighter_features():
     agg["strikes_absorbed_per_min"] = agg["opp_sig_landed"] / agg["total_fight_mins"]
     agg["takedown_accuracy"] = agg["takedowns_landed"] / agg["takedowns_attempted"].replace(0, 1)
     agg["takedowns_per_min"] = agg["takedowns_landed"] / agg["total_fight_mins"]
-    agg["submission_attempts_per_min"] = agg["submission_attempts"] / agg["total_fight_mins"]
-    agg["knockdowns_per_fight"] = agg["total_knockdowns"] / agg["total_fights"]
-    agg["finish_rate"] = agg["total_finishes"] / agg["total_wins"].replace(0, 1)
-    agg["control_time_per_min"] = agg["control_time_seconds"] / 60 / agg["total_fight_mins"]
+    agg["knockdowns_per_15min"] = (agg["total_knockdowns"] / agg["total_fight_mins"]) * 15
+    agg["takedown_defense_rate"] = 1 - (agg["opp_td_landed"] / agg["opp_td_attempted"].replace(0, 1))
+    agg["ko_per_15min"] = (agg["total_ko_wins"] / agg["total_fight_mins"]) * 15
+    agg["sub_per_15min"] = (agg["total_sub_wins"] / agg["total_fight_mins"]) * 15
 
     features = agg[[
         "fighter_id",
@@ -113,11 +111,17 @@ def compute_fighter_features():
         "strikes_absorbed_per_min",
         "takedown_accuracy",
         "takedowns_per_min",
-        "submission_attempts_per_min",
-        "knockdowns_per_fight",
-        "finish_rate",
-        "control_time_per_min"
-    ]]
+        "knockdowns_per_15min",
+        "takedown_defense_rate",
+        "ko_per_15min",
+        "sub_per_15min",
+    ]].copy()
+
+    # Cap extreme values at 99th percentile
+    feature_cols = [c for c in features.columns if c != "fighter_id"]
+    for col in feature_cols:
+        cap = features[col].quantile(0.99)
+        features[col] = features[col].clip(upper=cap)
 
     return features
 
