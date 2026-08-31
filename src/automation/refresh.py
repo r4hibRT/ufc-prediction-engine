@@ -11,8 +11,6 @@ Steps:
      enough that incremental rating updates are not worth the complexity)
   3. rebuild the modelling dataset and chronological split
 
-Clustering is deliberately NOT part of this job. See SKIP_CLUSTERING_NOTE.
-
 Usage:
     python -m src.automation.refresh
     python -m src.automation.refresh --skip-scrape
@@ -34,16 +32,6 @@ LOG_DIR = PROJECT_ROOT / "logs"
 STATUS_FILE = LOG_DIR / "last_run.json"
 LOCK_FILE = LOG_DIR / "refresh.lock"
 LOCK_STALE_SECONDS = 6 * 60 * 60
-
-SKIP_CLUSTERING_NOTE = """
-Re-fitting the GMM is unsafe to automate as the code currently stands.
-GaussianMixture does not guarantee stable component ordering across fits, but
-ARCHETYPE_LABELS in src/clustering/cluster.py and CLUSTER_LABEL_ORDER in
-src/simulation/matchup.py both hard-code cluster index -> archetype name. A
-silent re-fit would keep the same integer labels while the underlying clusters
-moved, corrupting every archetype and every prob_0..prob_4 column without
-raising anything. Re-cluster by hand, re-inspect, and update both mappings.
-"""
 
 
 def _force_utf8_stdio():

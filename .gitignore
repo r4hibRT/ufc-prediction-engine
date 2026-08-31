@@ -30,3 +30,7 @@ progress.log
 
 # Automation run logs
 logs/
+
+# Generated modelling datasets
+train_data.csv
+test_data.csv

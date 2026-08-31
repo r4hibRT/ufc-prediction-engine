@@ -9,7 +9,6 @@ FEATURE_COLS = [
     "same_stance", "experience_diff", "layoff_diff",
     "division_experience_a", "division_experience_b",
     "is_title_fight", "five_round_experience_interaction",
-    "style_matchup_prob"
 ]
 
 

@@ -3,7 +3,6 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from src.db.connection import get_connection
-from src.simulation.matchup import build_matchup_matrix, reindex_probs, compute_style_probability
 
 
 def build_raw_features():
@@ -24,8 +23,7 @@ def build_raw_features():
     """, conn)
 
     fighters_df = pd.read_sql("""
-        SELECT id AS fighter_id, dob, reach, height, stance,
-               prob_0, prob_1, prob_2, prob_3, prob_4
+        SELECT id AS fighter_id, dob, reach, height, stance
         FROM fighters
     """, conn)
 
@@ -33,19 +31,6 @@ def build_raw_features():
 
     fighters_df = fighters_df.set_index("fighter_id")
     rating_lookup = ratings_df.set_index(["fighter_id", "bout_id"])[["rating", "rd"]].to_dict("index")
-
-    # Style-matchup matrix built once (STATIC archetypes -- leakage-flagged screening feature)
-    matchup_matrix = build_matchup_matrix()
-
-    def style_matchup_prob(fid_a, fid_b):
-        if fid_a not in fighters_df.index or fid_b not in fighters_df.index:
-            return np.nan
-        fa, fb = fighters_df.loc[fid_a], fighters_df.loc[fid_b]
-        if pd.isna(fa["prob_0"]) or pd.isna(fb["prob_0"]):
-            return np.nan
-        probs_a = reindex_probs({f"prob_{i}": fa[f"prob_{i}"] for i in range(5)})
-        probs_b = reindex_probs({f"prob_{i}": fb[f"prob_{i}"] for i in range(5)})
-        return compute_style_probability(probs_a, probs_b, matchup_matrix)
 
     state = {}
 
@@ -112,8 +97,6 @@ def build_raw_features():
             else:
                 five_rd_interaction = np.nan
 
-            style_prob = style_matchup_prob(a_id, b_id)
-
             label_a_wins = 1 if winner == a_id else 0
 
             rows.append({
@@ -125,7 +108,6 @@ def build_raw_features():
                 "division_experience_a": div_exp_a_flag, "division_experience_b": div_exp_b_flag,
                 "is_title_fight": int(is_title),
                 "five_round_experience_interaction": five_rd_interaction,
-                "style_matchup_prob": style_prob,
                 "label": label_a_wins
             })
 
@@ -139,7 +121,6 @@ def build_raw_features():
                 "division_experience_a": div_exp_b_flag, "division_experience_b": div_exp_a_flag,
                 "is_title_fight": int(is_title),
                 "five_round_experience_interaction": -five_rd_interaction if not pd.isna(five_rd_interaction) else np.nan,
-                "style_matchup_prob": (1 - style_prob) if not pd.isna(style_prob) else np.nan,
                 "label": 1 - label_a_wins
             })
 
@@ -160,7 +141,7 @@ def build_raw_features():
 
 def clean_and_encode(df):
     df = df.dropna(subset=[
-        "reach_diff", "height_diff", "age_diff", "style_matchup_prob"
+        "reach_diff", "height_diff", "age_diff"
     ])
 
     def same_stance(matchup_str):
@@ -218,7 +199,6 @@ def rebuild_dataset(verbose=True):
         "reach_diff": 1, "height_diff": 1, "age_diff": 2,
         "layoff_diff": 1,
         "five_round_experience_interaction": 4,
-        "style_matchup_prob": 4,
     }
     for col, decimals in round_map.items():
         df[col] = df[col].round(decimals)
