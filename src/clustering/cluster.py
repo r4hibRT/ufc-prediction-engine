@@ -23,8 +23,12 @@ FEATURE_COLS = [
 ]
 
 ARCHETYPE_LABELS = {
-
-}  # filled in after inspecting clusters
+    0: "Versatile Striker",
+    1: "Elite Finisher",
+    2: "Submission Threat",
+    3: "Technical Grappler",
+    4: "Pure Striker"
+} # filled in after inspecting clusters
 
 
 def find_best_k(X_scaled, k_range=range(2, 11)):

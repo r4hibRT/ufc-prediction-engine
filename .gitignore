@@ -27,3 +27,6 @@ data/raw/
 Thumbs.db
 
 progress.log
+
+# Automation run logs
+logs/

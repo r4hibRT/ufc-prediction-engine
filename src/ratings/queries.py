@@ -79,24 +79,40 @@ def get_career_arc(fighter_id):
     ]
 
 
-def get_p4p_rankings(limit=25, min_bouts=8):
+def get_peak_rankings(limit=25, min_bouts=8):
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
-        SELECT f.id, f.name, 
-               MAX(r.rating) as peak_rating,
-               MIN(r.rd) as min_rd,
-               ROUND(MAX(r.rating) - (MIN(r.rd) * 2), 2) as adjusted_peak,
-               r2.rating as current_rating,
-               r2.rd as current_rd,
-               COUNT(r.id) as total_bouts,
-               (SELECT b.weight_class FROM bouts b
-                JOIN ratings r3 ON r3.bout_id = b.id
-                WHERE r3.fighter_id = f.id
-                ORDER BY r3.date DESC LIMIT 1) as primary_division
-        FROM fighters f
-        JOIN ratings r ON r.fighter_id = f.id
+        WITH peak_bout AS (
+            SELECT
+                fighter_id,
+                rating,
+                rd,
+                ROW_NUMBER() OVER (PARTITION BY fighter_id ORDER BY rating DESC) AS rn
+            FROM ratings
+        ),
+        bout_counts AS (
+            SELECT fighter_id, COUNT(*) AS total_bouts
+            FROM ratings
+            GROUP BY fighter_id
+        )
+        SELECT
+            f.id,
+            f.name,
+            pb.rating AS peak_rating,
+            pb.rd AS rd_at_peak,
+            ROUND(pb.rating - (pb.rd * 2), 2) AS adjusted_peak,
+            r2.rating AS current_rating,
+            r2.rd AS current_rd,
+            bc.total_bouts,
+            (SELECT b.weight_class FROM bouts b
+             JOIN ratings r3 ON r3.bout_id = b.id
+             WHERE r3.fighter_id = f.id
+             ORDER BY r3.date DESC LIMIT 1) AS primary_division
+        FROM peak_bout pb
+        JOIN fighters f ON f.id = pb.fighter_id
+        JOIN bout_counts bc ON bc.fighter_id = pb.fighter_id
         JOIN LATERAL (
             SELECT rating, rd
             FROM ratings
@@ -104,9 +120,9 @@ def get_p4p_rankings(limit=25, min_bouts=8):
             ORDER BY date DESC, id DESC
             LIMIT 1
         ) r2 ON true
-        GROUP BY f.id, f.name, r2.rating, r2.rd
-        HAVING COUNT(r.id) >= %s
-        ORDER BY (MAX(r.rating) - (MIN(r.rd) * 2)) DESC
+        WHERE pb.rn = 1
+          AND bc.total_bouts >= %s
+        ORDER BY (pb.rating - (pb.rd * 2)) DESC
         LIMIT %s;
     """, (min_bouts, limit))
 
@@ -118,8 +134,8 @@ def get_p4p_rankings(limit=25, min_bouts=8):
         {
             "fighter_id": row[0],
             "name": row[1],
-            "peak_rating": row[2],
-            "min_rd": row[3],
+            "peak_rating": round(row[2], 2),
+            "rd_at_peak": round(row[3], 2),
             "adjusted_peak": row[4],
             "current_rating": row[5],
             "current_rd": row[6],
@@ -129,7 +145,6 @@ def get_p4p_rankings(limit=25, min_bouts=8):
         }
         for i, row in enumerate(rows)
     ]
-
 
 def get_biggest_upsets(limit=10):
     conn = get_connection()
