@@ -66,7 +66,12 @@ def run_pipeline(events, page):
                         stance=profile_b["stance"]
                     )
 
-                winner_id = fighter_a_id if details["winner"] == details["fighter_a_name"] else fighter_b_id
+                if details["winner"] is None:
+                    winner_id = None
+                elif details["winner"] == details["fighter_a_name"]:
+                    winner_id = fighter_a_id
+                else:
+                    winner_id = fighter_b_id
 
                 bout_id = insert_bout(
                     date=event_date,
@@ -79,7 +84,8 @@ def run_pipeline(events, page):
                     time=details["time"],
                     weight_class=details["weight_class"],
                     is_title_fight=details["is_title_fight"],
-                    is_defence=details["is_defence"]
+                    is_defence=details["is_defence"],
+                    outcome=details["outcome"]
                 )
 
                 stats = scrape_bout_stats(

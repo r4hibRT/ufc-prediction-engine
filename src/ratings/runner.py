@@ -1,16 +1,22 @@
+import math
+
 from src.db.connection import get_connection
-from src.ratings.glicko2 import Glicko2Fighter, update_ratings, _expected_score, _scale_down
+from src.ratings.glicko2 import (
+    Glicko2Fighter, update_ratings, _expected_score, _scale_down,
+    RATING_PERIOD_DAYS,
+)
 
 SKIP_METHODS = {'Overturned', 'Other'}
-MAX_RATING_GAIN = 100
+MAX_RATING_CHANGE = 100
 UPSET_THRESHOLD = 0.25
 UPSET_DISCOUNT = 0.85
+TITLE_FIGHT_WEIGHT = 1.1
 BASELINE_FINISH_RATE = 0.502
 
 
 def get_bouts_chronological(cur):
     cur.execute("""
-        SELECT id, date, fighter_a_id, fighter_b_id, winner_id, method, is_title_fight
+        SELECT id, date, fighter_a_id, fighter_b_id, winner_id, method, is_title_fight, outcome
         FROM bouts
         ORDER BY date ASC, id ASC
     """)
@@ -53,36 +59,52 @@ def era_adjust_outcome(outcome, bout_id, finish_rates):
 
 
 
-def determine_outcome(winner_id, fighter_a_id, method, is_title_fight, expected_a):
+def determine_outcome(winner_id, fighter_a_id, method, is_title_fight, expected_a, outcome=None):
     if method in SKIP_METHODS:
         return None
     if winner_id is None:
-        if method == 'Decision':
+        # A draw is a real result worth half a win; a no contest never
+        # happened and must not move either rating.
+        if outcome == 'draw':
             return 0.5
-        return None
+        if outcome == 'nc':
+            return None
+        # Rows predating the outcome column: fall back to the old guess.
+        return 0.5 if method == 'Decision' else None
 
-    expected_b = 1 - expected_a
+    # Score the WINNER, then map back to fighter A's perspective. Scoring from
+    # A's side meant the title weighting only ever reached fighter A, who wins
+    # 342 of 462 decided title fights purely because of scrape order.
+    winner_is_a = (winner_id == fighter_a_id)
+    expected_winner = expected_a if winner_is_a else 1.0 - expected_a
 
-    if winner_id == fighter_a_id:
-        outcome = 1.1 if is_title_fight else 1.0
-        if expected_a < UPSET_THRESHOLD:
-            outcome = outcome * UPSET_DISCOUNT
-        return outcome
-    else:
-        if expected_b < UPSET_THRESHOLD:
-            outcome = 1.0 * UPSET_DISCOUNT
-            return 1 - outcome
-        return 0.0
+    score = TITLE_FIGHT_WEIGHT if is_title_fight else 1.0
+    if expected_winner < UPSET_THRESHOLD:
+        score = score * UPSET_DISCOUNT
+
+    return score if winner_is_a else 1.0 - score
+
+
+def elapsed_periods(previous_date, bout_date):
+    if previous_date is None:
+        return 1.0
+    days = (bout_date - previous_date).days
+    return max(days, 0) / RATING_PERIOD_DAYS
 
 
 def apply_cap(old_rating, new_fighter):
-    gain = new_fighter.rating - old_rating
-    if gain > MAX_RATING_GAIN:
-        return Glicko2Fighter(
-            old_rating + MAX_RATING_GAIN,
-            new_fighter.rd,
-            new_fighter.volatility
-        )
+    """Bound a single bout's rating move in BOTH directions.
+
+    Capping only gains meant a fighter could shed 300 points in a night but
+    never add more than 100. At the current INITIAL_RD of 150 the largest
+    possible move is about 86, so this never fires -- but it fired on 28% of
+    moves at the original INITIAL_RD of 350, so the symmetry matters the
+    moment that constant is retuned.
+    """
+    delta = new_fighter.rating - old_rating
+    if abs(delta) > MAX_RATING_CHANGE:
+        capped = old_rating + math.copysign(MAX_RATING_CHANGE, delta)
+        return Glicko2Fighter(capped, new_fighter.rd, new_fighter.volatility)
     return new_fighter
 
 
@@ -99,15 +121,21 @@ def run_ratings():
     print(f"Rolling 3-year finish rates computed for {len(finish_rates)} bouts")
 
     fighters = {}
+    last_bout_date = {}
     rating_rows = []
 
     for bout in bouts:
-        bout_id, date_, fighter_a_id, fighter_b_id, winner_id, method, is_title_fight = bout
+        bout_id, date_, fighter_a_id, fighter_b_id, winner_id, method, is_title_fight, bout_outcome = bout
 
         if fighter_a_id not in fighters:
             fighters[fighter_a_id] = Glicko2Fighter()
         if fighter_b_id not in fighters:
             fighters[fighter_b_id] = Glicko2Fighter()
+
+        # Rating periods since each fighter last competed. A debut counts as
+        # one period so a first bout behaves as it always did.
+        periods_a = elapsed_periods(last_bout_date.get(fighter_a_id), date_)
+        periods_b = elapsed_periods(last_bout_date.get(fighter_b_id), date_)
 
         fighter_a = fighters[fighter_a_id]
         fighter_b = fighters[fighter_b_id]
@@ -117,7 +145,7 @@ def run_ratings():
         expected_a = _expected_score(mu_a, mu_b, phi_b)
         expected_b = 1 - expected_a
 
-        outcome = determine_outcome(winner_id, fighter_a_id, method, is_title_fight, expected_a)
+        outcome = determine_outcome(winner_id, fighter_a_id, method, is_title_fight, expected_a, bout_outcome)
 
         if outcome is None:
             continue
@@ -125,13 +153,15 @@ def run_ratings():
         # Apply era adjustment
         outcome = era_adjust_outcome(outcome, bout_id, finish_rates)
 
-        new_a, new_b = update_ratings(fighter_a, fighter_b, outcome)
+        new_a, new_b = update_ratings(fighter_a, fighter_b, outcome, periods_a, periods_b)
 
         new_a = apply_cap(fighter_a.rating, new_a)
         new_b = apply_cap(fighter_b.rating, new_b)
 
         fighters[fighter_a_id] = new_a
         fighters[fighter_b_id] = new_b
+        last_bout_date[fighter_a_id] = date_
+        last_bout_date[fighter_b_id] = date_
 
         rating_rows.append((fighter_a_id, bout_id, date_, new_a.rating, new_a.rd, new_a.volatility, expected_a))
         rating_rows.append((fighter_b_id, bout_id, date_, new_b.rating, new_b.rd, new_b.volatility, expected_b))

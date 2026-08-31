@@ -23,6 +23,7 @@ def create_tables():
             fighter_a_id INTEGER REFERENCES fighters(id),
             fighter_b_id INTEGER REFERENCES fighters(id),
             winner_id INTEGER REFERENCES fighters(id),
+            outcome VARCHAR(10),
             method VARCHAR(20),
             method_detail VARCHAR(100),
             round INTEGER,
@@ -65,6 +66,9 @@ def create_tables():
             UNIQUE(fighter_id, bout_id)
         );
     """)
+
+    # Additive migrations for databases created before these columns existed.
+    cur.execute("ALTER TABLE bouts ADD COLUMN IF NOT EXISTS outcome VARCHAR(10);")
 
     conn.commit()
     cur.close()

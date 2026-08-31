@@ -16,6 +16,39 @@ def scrape_bout_urls(event_url, page):
             bout_urls.append(link)
 
     return bout_urls
+def scrape_event_results(event_url, page):
+    """Read every bout's outcome off a single event page.
+
+    The event listing already carries a win/draw/nc flag per row plus both
+    fighter URLs, so one request settles a whole card. That is what makes
+    correcting historical outcomes affordable: 785 event pages instead of
+    8,833 individual bout pages.
+    """
+    page.goto(event_url, wait_until="networkidle", timeout=60000)
+    soup = BeautifulSoup(page.content(), "html.parser")
+
+    results = []
+    for row in soup.select("tr.b-fight-details__table-row"):
+        bout_url = row.get("data-link")
+        flag = row.select_one("i.b-flag__text")
+        fighter_links = [
+            a["href"] for a in row.select("a.b-link")
+            if "fighter-details" in a.get("href", "")
+        ]
+
+        if not bout_url or not flag or len(fighter_links) < 2:
+            continue
+
+        results.append({
+            "bout_url": bout_url,
+            "fighter_a_url": fighter_links[0],
+            "fighter_b_url": fighter_links[1],
+            "outcome": flag.get_text(strip=True).lower(),
+        })
+
+    return results
+
+
 def scrape_bout_details(bout_url, page):
     page.goto(bout_url, wait_until="networkidle", timeout=60000)
     html = page.content()
@@ -28,10 +61,25 @@ def scrape_bout_details(bout_url, page):
     fighter_b_name = fighter_tags[1].get_text(strip=True)
     fighter_b_url = fighter_tags[1]["href"]
 
-    # Winner — W/L indicators
+    # Outcome — the status tag reads W/L for a decided bout, but D for a draw
+    # and NC for a no contest. Only an explicit "W" names a winner; anything
+    # else leaves the bout without one.
     result_tags = soup.select("i.b-fight-details__person-status")
-    fighter_a_result = result_tags[0].get_text(strip=True)
-    winner = fighter_a_name if fighter_a_result == "W" else fighter_b_name
+    statuses = [t.get_text(strip=True) for t in result_tags]
+
+    if statuses and statuses[0] == "W":
+        winner = fighter_a_name
+    elif len(statuses) > 1 and statuses[1] == "W":
+        winner = fighter_b_name
+    else:
+        winner = None
+
+    if winner is not None:
+        outcome = "win"
+    elif "NC" in statuses:
+        outcome = "nc"
+    else:
+        outcome = "draw"
 
     details_section = soup.select_one("div.b-fight-details__content")
     # Method
@@ -67,6 +115,7 @@ def scrape_bout_details(bout_url, page):
         "fighter_b_name": fighter_b_name,
         "fighter_b_url": fighter_b_url,
         "winner": winner,
+        "outcome": outcome,
         "method": method_type,
         "method_detail": method_detail,
         "round": round_,

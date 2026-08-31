@@ -5,6 +5,11 @@ INITIAL_RATING = 1500
 INITIAL_RD = 150
 INITIAL_VOLATILITY = 0.06
 
+# One Glicko-2 rating period, in days. Six months roughly matches UFC cadence:
+# an active fighter competes two or three times a year, so about one bout per
+# period. This is what converts a layoff into growing uncertainty.
+RATING_PERIOD_DAYS = 182.5
+
 
 class Glicko2Fighter:
     def __init__(self, rating=INITIAL_RATING, rd=INITIAL_RD, volatility=INITIAL_VOLATILITY):
@@ -87,15 +92,25 @@ def _compute_new_volatility(phi, volatility, v, delta):
     return math.exp(A / 2)
 
 
-def update_ratings(fighter, opponent, outcome):
+def update_ratings(fighter, opponent, outcome, periods_fighter=1.0, periods_opponent=1.0):
     """
     Update ratings for a single bout.
     outcome: 1.0 = fighter wins, 0.0 = fighter loses, 0.5 = draw
+
+    periods_fighter / periods_opponent are the rating periods elapsed since
+    each fighter last competed. Glicko-2 grows uncertainty with time away, so
+    passing the real gap makes a comeback after years carry more uncertainty
+    than a fight six weeks later. Defaults of 1.0 reproduce the old
+    one-period-per-bout behaviour.
+
     Returns updated (fighter, opponent) as new Glicko2Fighter objects.
     """
     results = []
 
-    for f, opp, s in [(fighter, opponent, outcome), (opponent, fighter, 1 - outcome)]:
+    for f, opp, s, periods in [
+        (fighter, opponent, outcome, periods_fighter),
+        (opponent, fighter, 1 - outcome, periods_opponent),
+    ]:
         mu, phi = _scale_down(f)
         mu_j, phi_j = _scale_down(opp)
 
@@ -106,7 +121,12 @@ def update_ratings(fighter, opponent, outcome):
         delta = _compute_delta(mu, opponents, outcomes, v)
         new_volatility = _compute_new_volatility(phi, f.volatility, v, delta)
 
-        phi_star = math.sqrt(phi ** 2 + new_volatility ** 2)
+        # Uncertainty grows with elapsed time, not with fights played. Clamped
+        # at the initial RD so a decade away cannot push a fighter beyond
+        # "completely unknown".
+        phi_star = math.sqrt(phi ** 2 + new_volatility ** 2 * max(periods, 0.0))
+        phi_star = min(phi_star, INITIAL_RD / 173.7178)
+
         new_phi = 1 / math.sqrt(1 / phi_star ** 2 + 1 / v)
         new_mu = mu + new_phi ** 2 * sum(
             _g(phi_j) * (s - _expected_score(mu, mu_j, phi_j))

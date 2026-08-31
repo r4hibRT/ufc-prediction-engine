@@ -23,18 +23,18 @@ def insert_fighter(url, name, dob=None, height=None, reach=None, stance=None):
     return row[0]
 
 def insert_bout(date, fighter_a_id, fighter_b_id, winner_id, method, method_detail,
-                round_, time, weight_class, is_title_fight, is_defence):
+                round_, time, weight_class, is_title_fight, is_defence, outcome=None):
     conn = get_connection()
     cur = conn.cursor()
 
     cur.execute("""
         INSERT INTO bouts (date, fighter_a_id, fighter_b_id, winner_id, method, method_detail,
-                           round, time, weight_class, is_title_fight, is_defence)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                           round, time, weight_class, is_title_fight, is_defence, outcome)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (date, fighter_a_id, fighter_b_id) DO NOTHING
         RETURNING id;
     """, (date, fighter_a_id, fighter_b_id, winner_id, method, method_detail,
-          round_, time, weight_class, is_title_fight, is_defence))
+          round_, time, weight_class, is_title_fight, is_defence, outcome))
 
     row = cur.fetchone()
     if row is None:
