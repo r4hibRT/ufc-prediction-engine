@@ -2,16 +2,19 @@ from src.scraper.events import scrape_events
 from src.scraper.bouts import scrape_bout_urls, scrape_bout_details, scrape_bout_stats
 from src.scraper.fighters import scrape_fighter_profile
 from src.db.insert import insert_fighter, insert_bout, insert_bout_stats, fighter_exists
+from src.db.connection import get_connection
 from playwright.sync_api import sync_playwright
 from datetime import datetime
+import os
 
 
 def parse_date(date_str):
     try:
         return datetime.strptime(date_str.strip(), "%B %d, %Y").date()
-    except:
+    except (ValueError, AttributeError):
         return None
 PROGRESS_LOG = "progress.log"
+FAILED_BOUTS_LOG = "logs/failed_bouts.log"
 
 def load_progress():
     try:
@@ -23,6 +26,19 @@ def load_progress():
 def log_progress(event_url):
     with open(PROGRESS_LOG, "a") as f:
         f.write(event_url + "\n")
+
+
+def log_failed_bout(event_name, bout_url, error):
+    """Record a bout that could not be scraped, so failures stay visible.
+
+    The event is deliberately NOT checkpointed when this happens, so the next
+    run retries it. The trade-off is that a permanently unparseable bout makes
+    its event re-scrape every week -- cheap at one event, and far better than
+    the previous behaviour of silently dropping the bout forever.
+    """
+    os.makedirs(os.path.dirname(FAILED_BOUTS_LOG), exist_ok=True)
+    with open(FAILED_BOUTS_LOG, "a", encoding="utf-8") as f:
+        f.write(f"{datetime.now().isoformat()}\t{event_name}\t{bout_url}\t{error}\n")
 
 
 def run_pipeline(events, page):
@@ -38,11 +54,13 @@ def run_pipeline(events, page):
         bout_urls = scrape_bout_urls(event["url"], page)
         success = 0
         failed = 0
+        # One connection for the whole card instead of one per insert.
+        conn = get_connection()
         for bout_url in bout_urls:
             try:
                 details = scrape_bout_details(bout_url, page)
 
-                fighter_a_id = fighter_exists(details["fighter_a_url"])
+                fighter_a_id = fighter_exists(details["fighter_a_url"], conn=conn)
                 if fighter_a_id is None:
                     profile_a = scrape_fighter_profile(details["fighter_a_url"], page)
                     fighter_a_id = insert_fighter(
@@ -51,10 +69,11 @@ def run_pipeline(events, page):
                         dob=profile_a["dob"],
                         height=profile_a["height"],
                         reach=profile_a["reach"],
-                        stance=profile_a["stance"]
+                        stance=profile_a["stance"],
+                        conn=conn
                     )
 
-                fighter_b_id = fighter_exists(details["fighter_b_url"])
+                fighter_b_id = fighter_exists(details["fighter_b_url"], conn=conn)
                 if fighter_b_id is None:
                     profile_b = scrape_fighter_profile(details["fighter_b_url"], page)
                     fighter_b_id = insert_fighter(
@@ -63,7 +82,8 @@ def run_pipeline(events, page):
                         dob=profile_b["dob"],
                         height=profile_b["height"],
                         reach=profile_b["reach"],
-                        stance=profile_b["stance"]
+                        stance=profile_b["stance"],
+                        conn=conn
                     )
 
                 if details["winner"] is None:
@@ -85,7 +105,8 @@ def run_pipeline(events, page):
                     weight_class=details["weight_class"],
                     is_title_fight=details["is_title_fight"],
                     is_defence=details["is_defence"],
-                    outcome=details["outcome"]
+                    outcome=details["outcome"],
+                    conn=conn
                 )
 
                 stats = scrape_bout_stats(
@@ -95,22 +116,27 @@ def run_pipeline(events, page):
                 )
 
                 if stats:
-                    insert_bout_stats(bout_id, fighter_a_id, stats[0])
-                    insert_bout_stats(bout_id, fighter_b_id, stats[1])
+                    insert_bout_stats(bout_id, fighter_a_id, stats[0], conn=conn)
+                    insert_bout_stats(bout_id, fighter_b_id, stats[1], conn=conn)
 
                 print(f"  ✓ {details['fighter_a_name']} vs {details['fighter_b_name']}")
                 success += 1
 
             except Exception as e:
                 print(f"  ✗ Failed {bout_url}: {e}")
+                log_failed_bout(event["name"], bout_url, f"{type(e).__name__}: {e}")
                 failed += 1
-                import traceback
-                traceback.print_exc()
+                conn.rollback()
                 continue
 
+        conn.commit()
+        conn.close()
+
         print(f"  → {success} succeeded, {failed} failed")
-        if success > 0:
+        if failed == 0 and success > 0:
             log_progress(event["url"])
+        elif failed:
+            print(f"  ⚠ {failed} bout(s) failed — event not checkpointed, will retry next run")
         else:
             print(f"  ⚠ No bouts scraped — will retry on next run")
 

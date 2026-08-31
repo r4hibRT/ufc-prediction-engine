@@ -23,7 +23,7 @@ def scrape_fighter_profile(fighter_url, page):
             feet = int(parts[0].strip())
             inches = int(parts[1].strip())
             return feet * 12 + inches
-        except:
+        except (ValueError, IndexError, AttributeError):
             return None
 
     def parse_reach(r):
@@ -31,7 +31,7 @@ def scrape_fighter_profile(fighter_url, page):
             return None
         try:
             return float(r.replace('"', '').strip())
-        except:
+        except (ValueError, IndexError, AttributeError):
             return None
 
     def parse_dob(d):
@@ -39,7 +39,7 @@ def scrape_fighter_profile(fighter_url, page):
             return None
         try:
             return datetime.strptime(d, "%b %d, %Y").date()
-        except:
+        except (ValueError, IndexError, AttributeError):
             return None
 
     height_raw = get_stat("Height:")

@@ -1,4 +1,5 @@
 import math
+from bisect import bisect_left
 
 from src.db.connection import get_connection
 from src.ratings.glicko2 import (
@@ -24,12 +25,24 @@ def get_bouts_chronological(cur):
 
 
 def compute_rolling_finish_rates(bouts):
-    finish_rates = {}
-    decided = [
+    """Trailing three-year finish rate as of each bout.
+
+    Built from a sorted date list plus a prefix sum of finishes, so each bout
+    costs two binary searches instead of a full rescan of history. The previous
+    version was quadratic -- roughly 78 million comparisons over 8,833 bouts.
+    """
+    decided = sorted(
         (b[1], 1 if b[5] in ('KO/TKO', 'Submission') else 0)
         for b in bouts
         if b[4] is not None
-    ]
+    )
+    dates = [d for d, _ in decided]
+
+    prefix = [0]
+    for _, is_finish in decided:
+        prefix.append(prefix[-1] + is_finish)
+
+    finish_rates = {}
     for bout in bouts:
         bout_id = bout[0]
         bout_date = bout[1]
@@ -37,14 +50,16 @@ def compute_rolling_finish_rates(bouts):
             window_start = bout_date.replace(year=bout_date.year - 3)
         except ValueError:
             window_start = bout_date.replace(year=bout_date.year - 3, day=28)
-        window_bouts = [
-            is_finish for date_, is_finish in decided
-            if window_start <= date_ < bout_date
-        ]
-        if len(window_bouts) >= 30:
-            finish_rates[bout_id] = sum(window_bouts) / len(window_bouts)
+
+        lo = bisect_left(dates, window_start)
+        hi = bisect_left(dates, bout_date)
+        count = hi - lo
+
+        if count >= 30:
+            finish_rates[bout_id] = (prefix[hi] - prefix[lo]) / count
         else:
             finish_rates[bout_id] = BASELINE_FINISH_RATE
+
     return finish_rates
 
 

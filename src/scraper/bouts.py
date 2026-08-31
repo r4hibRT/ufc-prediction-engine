@@ -1,6 +1,35 @@
 
 from bs4 import BeautifulSoup
 
+# Longest / most specific first: "Heavyweight" is a substring of
+# "Light Heavyweight", and "Flyweight" of "Women's Flyweight".
+WEIGHT_CLASSES = [
+    "Women's Strawweight", "Women's Flyweight", "Women's Bantamweight",
+    "Women's Featherweight", "Women's Lightweight",
+    "Light Heavyweight", "Super Heavyweight",
+    "Strawweight", "Flyweight", "Bantamweight", "Featherweight",
+    "Lightweight", "Welterweight", "Middleweight", "Heavyweight",
+    "Catch Weight", "Open Weight",
+]
+
+
+def parse_weight_class(title_text):
+    """Extract a division from a bout title.
+
+    Stripping the words "UFC"/"Bout"/"Title Bout" out of the raw title used to
+    leave debris like "4 Tournament" for old tournament cards. Matching against
+    the known divisions instead means anything unrecognised -- which in practice
+    is only the pre-2000 open tournaments -- lands on Open Weight.
+    """
+    if not title_text:
+        return None
+    lowered = title_text.lower()
+    for weight_class in WEIGHT_CLASSES:
+        if weight_class.lower() in lowered:
+            return weight_class
+    return "Open Weight"
+
+
 TEST_EVENT_URL = "http://www.ufcstats.com/event-details/f354c50b8d63d9b3"
 
 def scrape_bout_urls(event_url, page):
@@ -104,10 +133,7 @@ def scrape_bout_details(bout_url, page):
     method_detail = method_parts[1].strip() if len(method_parts) > 1 else None
 
     # Weight class
-    weight_class = None
-    if bout_type:
-        bout_text_raw = bout_type.get_text(strip=True)
-        weight_class = bout_text_raw.replace("UFC", "").replace("Title Bout", "").replace("Bout", "").strip()
+    weight_class = parse_weight_class(bout_type.get_text(strip=True)) if bout_type else None
 
     return {
         "fighter_a_name": fighter_a_name,
@@ -193,23 +219,26 @@ def scrape_bout_stats(soup, fighter_a_url, fighter_b_url):
 
 
 if __name__ == "__main__":
+    from playwright.sync_api import sync_playwright
+
     test_urls = [
         "http://www.ufcstats.com/fight-details/4a0db214d9721d6e",  # Merab vs Yan 2
-        "http://www.ufcstats.com/fight-details/dfa692db6d39330c",  # Pantoja vs Van
+        "http://www.ufcstats.com/fight-details/91bb64656e13a1d4",  # Edgar vs Maynard 2 (draw)
+        "http://www.ufcstats.com/fight-details/65b4d4be2d04bb34",  # Vera vs Silva (no contest)
     ]
-    for url in test_urls:
-        details = scrape_bout_details(url)
-        stats = scrape_bout_stats(
-            details["soup"],
-            details["fighter_a_url"],
-            details["fighter_b_url"]
-        )
-        printable = {k: v for k, v in details.items() if k != "soup"}
-        print(printable)
-        print(stats)
-        print()
 
-
-
-
-
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        page = browser.new_page()
+        for url in test_urls:
+            details = scrape_bout_details(url, page)
+            stats = scrape_bout_stats(
+                details["soup"],
+                details["fighter_a_url"],
+                details["fighter_b_url"]
+            )
+            printable = {k: v for k, v in details.items() if k != "soup"}
+            print(printable)
+            print(stats)
+            print()
+        browser.close()

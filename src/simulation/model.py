@@ -43,6 +43,9 @@ def evaluate(model, scaler, test_df):
     ll = log_loss(y_test, probs)
     acc = accuracy_score(y_test, preds)
 
+    # Every bout appears twice (mirrored), so row count overstates sample size.
+    n_fights = test_df["bout_id"].nunique()
+    print(f"Test set: {len(test_df)} rows = {n_fights} unique fights")
     print(f"Test Brier score: {brier:.4f}  (lower is better, 0.25 = uninformative baseline)")
     print(f"Test log loss:    {ll:.4f}")
     print(f"Test accuracy:    {acc:.4f}")

@@ -83,7 +83,7 @@ def _compute_new_volatility(phi, volatility, v, delta):
         iteration += 1
         C = A + (A - B) * fa / (fb - fa)
         fc = f(C)
-        if fc * fb < 0:
+        if fc * fb <= 0:
             A, fa = B, fb
         else:
             fa /= 2
