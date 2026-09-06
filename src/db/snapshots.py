@@ -1,20 +1,15 @@
 """Materialise per-bout point-in-time state into bout_snapshots.
 
-The replay in src/simulation/build_dataset.py already computes what every
-fighter knew about themselves entering every bout. It normally throws that away
-after building a feature row. This persists it, because "what did this fighter
-look like going into that fight" is the analytics platform's differentiator --
-ufcstats publishes career totals, not career-to-date totals.
-
-Rewritten wholesale rather than incrementally: the source replay is a pure
-function of the bouts and ratings tables, so a partial update could not be
-trusted to agree with a full one.
+"What did this fighter look like going into that fight" is the platform's
+differentiator -- ufcstats publishes career totals, not career-to-date totals.
+The table is rewritten wholesale because the replay is a pure function of the
+bouts and ratings tables, so a partial update could not be trusted.
 """
 
 from psycopg2.extras import execute_values
 
 from src.db.connection import get_connection
-from src.simulation.build_dataset import build_raw_features
+from src.analytics.replay import replay
 
 COLUMNS = [
     "bout_id", "fighter_id", "date",
@@ -35,7 +30,7 @@ def write_snapshots(conn=None, verbose=True):
 
     if verbose:
         print("Replaying bouts to collect point-in-time state...")
-    _, snapshots = build_raw_features(collect_snapshots=True)
+    snapshots = replay()
     if verbose:
         print(f"  collected {len(snapshots)} snapshots")
 

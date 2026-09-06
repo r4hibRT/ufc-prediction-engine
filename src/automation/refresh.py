@@ -9,7 +9,7 @@ Steps:
      bouts are genuinely new)
   2. recompute Glicko-2 ratings from scratch (~6s over ~8.8k bouts, cheap
      enough that incremental rating updates are not worth the complexity)
-  3. rebuild the modelling dataset and chronological split
+  3. rewrite per-bout snapshots for the point-in-time statistics
 
 Usage:
     python -m src.automation.refresh
@@ -35,11 +35,8 @@ LOCK_STALE_SECONDS = 6 * 60 * 60
 
 
 def _force_utf8_stdio():
-    """Scheduled tasks get a cp1252 console; the scraper prints non-ASCII.
-
-    Without this, a tick or arrow in pipeline.py's progress output raises
-    UnicodeEncodeError and kills an otherwise healthy run.
-    """
+    """Task Scheduler gives a cp1252 console and the scraper prints non-ASCII,
+    which would otherwise raise UnicodeEncodeError and kill a healthy run."""
     for stream_name in ("stdout", "stderr"):
         stream = getattr(sys, stream_name, None)
         if stream is not None and hasattr(stream, "reconfigure"):
@@ -71,11 +68,8 @@ def log(message):
 
 
 def acquire_lock():
-    """Prevent two refreshes from writing to the DB at once.
-
-    A scrape can outlive its weekly slot if the site is slow, and the ratings
-    step truncates the ratings table, so overlapping runs are genuinely unsafe.
-    """
+    """Stop two refreshes writing at once; the ratings step truncates a table,
+    so an overlapping run would corrupt it."""
     LOG_DIR.mkdir(parents=True, exist_ok=True)
 
     if LOCK_FILE.exists():
@@ -148,28 +142,29 @@ def step_ratings(dry_run=False):
     return {"recomputed": True}
 
 
-def step_dataset(dry_run=False):
-    from src.simulation.build_dataset import rebuild_dataset
+def step_snapshots(dry_run=False):
+    from src.db.snapshots import write_snapshots
 
     if dry_run:
-        log("  would rebuild train_data.csv / test_data.csv")
+        log("  would rewrite bout_snapshots")
         return {"skipped": "dry-run"}
 
-    return rebuild_dataset(verbose=True)
+    return write_snapshots(verbose=True)
 
 
 STEPS = [
     ("scrape", step_scrape),
     ("ratings", step_ratings),
-    ("dataset", step_dataset),
+    ("snapshots", step_snapshots),
 ]
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Refresh UFC data, ratings and dataset.")
+    parser = argparse.ArgumentParser(description="Refresh UFC data, ratings and snapshots.")
     parser.add_argument("--skip-scrape", action="store_true", help="reuse the DB as-is")
     parser.add_argument("--skip-ratings", action="store_true", help="leave ratings untouched")
-    parser.add_argument("--skip-dataset", action="store_true", help="do not rebuild CSVs")
+    parser.add_argument("--skip-snapshots", action="store_true",
+                        help="do not rewrite bout_snapshots")
     parser.add_argument("--dry-run", action="store_true",
                         help="report what would happen without writing anything")
     args = parser.parse_args()
@@ -187,7 +182,7 @@ def main():
     skipped = {
         "scrape": args.skip_scrape,
         "ratings": args.skip_ratings,
-        "dataset": args.skip_dataset,
+        "snapshots": args.skip_snapshots,
     }
 
     results = {}
@@ -219,8 +214,8 @@ def main():
                     results[name] = {"error": f"{type(exc).__name__}: {exc}"}
                     log(f"--- {name} FAILED: {type(exc).__name__}: {exc} ---")
                     traceback.print_exc(file=sys.stdout)
-                    # Later steps consume this step's output, so stop here
-                    # rather than rebuild a dataset from half-updated ratings.
+                    # Later steps consume this one's output, so stop rather
+                    # than build snapshots from half-updated ratings.
                     break
         finally:
             if not args.dry_run:

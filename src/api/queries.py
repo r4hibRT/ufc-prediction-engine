@@ -126,9 +126,8 @@ def get_fighter_stats(fighter_id, conn=None):
         WHERE fighter_id = %s ORDER BY date DESC LIMIT 1;
     """, (fighter_id,), conn)
 
-    # Career cage time must come from the bouts themselves. The latest
-    # snapshot holds time entering that bout, so using it would omit the most
-    # recent fight and inflate every per-minute rate.
+    # Cage time comes from the bouts themselves; the latest snapshot holds time
+    # entering that bout, which would omit it and inflate every rate.
     seconds = _one("""
         SELECT COALESCE(SUM(
             (b.round - 1) * 300
@@ -215,11 +214,8 @@ def get_current_rankings(limit=25, division=None, conn=None):
 
 
 def get_rankings_asof(as_of, limit=25, division=None, conn=None):
-    """Time machine: the board as it stood on any past date.
-
-    Nobody else publishes this, and it is a single query because every rating
-    at every date is already stored.
-    """
+    """The board as it stood on any past date -- a single query, because every
+    rating at every date is already stored."""
     return _rows(f"""
         WITH latest AS (
             SELECT DISTINCT ON (fighter_id) fighter_id, rating, rd, date
@@ -242,10 +238,7 @@ def get_rankings_asof(as_of, limit=25, division=None, conn=None):
 
 
 def get_movers(event_date=None, limit=15, conn=None):
-    """Biggest rating changes from the most recent card.
-
-    The weekly hook: what changed after Saturday.
-    """
+    """Biggest rating changes from the most recent card."""
     return _rows("""
         WITH target AS (
             SELECT COALESCE(%s::date, (SELECT MAX(date) FROM bouts)) AS d
@@ -294,8 +287,8 @@ def get_common_opponents(a_id, b_id, conn=None):
 
 
 def compare_fighters(a_id, b_id, conn=None):
-    """Descriptive comparison only -- no win probability. See the rating card
-    for why: among two experienced fighters the rating is near a coin flip."""
+    """Descriptive only -- no win probability, because among two experienced
+    fighters the rating is near a coin flip."""
     conn_owned = conn is None
     if conn_owned:
         conn = get_connection()

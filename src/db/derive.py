@@ -8,16 +8,8 @@ from src.db.connection import get_connection
 
 
 def derive_title_defences(conn=None):
-    """Mark title fights where a participant walked in holding the belt.
-
-    ufcstats does not say whether a title fight is a defence, so `is_defence`
-    sat hardcoded False on all 8,833 bouts. It is recoverable: walk each
-    division's title fights in order, track who last won one, and a bout is a
-    defence when either fighter is that person.
-
-    A draw or no contest leaves the belt where it was, which is how the sport
-    actually works -- the champion retains.
-    """
+    """Mark title fights where a participant walked in holding the belt, by
+    tracking each division's last title winner. A draw or no contest retains."""
     owned = conn is None
     if owned:
         conn = get_connection()

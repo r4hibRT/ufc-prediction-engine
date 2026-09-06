@@ -33,12 +33,8 @@ def scrape_events(page):
 
 
 def scrape_upcoming_events(page):
-    """Scheduled events that have not happened yet.
-
-    Same markup as the completed listing, different URL. Bout pages for these
-    events have fighters and a weight class but no result, so they feed
-    forward predictions rather than the ratings history.
-    """
+    """Scheduled events that have not happened yet. Same markup as the
+    completed listing, different URL."""
     return _parse_event_rows(page, UPCOMING_URL)
 
 

@@ -29,9 +29,8 @@ app = FastAPI(
     version="0.1.0",
 )
 
-# Every API route lives under /api. Without the prefix, "/rankings" and
-# "/fighters/1612" are claimed by both the API and the SPA router, so a hard
-# refresh or a shared link returns raw JSON instead of the page.
+# API routes live under /api; without the prefix "/rankings" is claimed by
+# both the API and the SPA router and a refresh returns raw JSON.
 router = APIRouter(prefix="/api")
 
 # The SPA is served separately in development.
@@ -81,11 +80,8 @@ def rankings_current(limit: int = Query(25, ge=1, le=200),
 def rankings_asof(as_of: date,
                   limit: int = Query(25, ge=1, le=200),
                   division: str | None = None):
-    """The board as it stood on any past date.
-
-    Every rating at every date is already stored, so this is one query -- and
-    it is not published anywhere else.
-    """
+    """The board as it stood on any past date; one query, because every rating
+    at every date is already stored."""
     return q.get_rankings_asof(as_of, limit=limit, division=division)
 
 
@@ -155,11 +151,8 @@ def upsets(limit: int = Query(10, ge=1, le=100)):
 
 @router.get("/ratings-card", tags=["meta"])
 def ratings_card():
-    """How the rating engine works, and where it stops working.
-
-    Published deliberately: the measured collapse in discrimination as
-    fighters gain experience is why this platform shows no predictions.
-    """
+    """How the rating engine works and where it stops working; the collapse in
+    discrimination with experience is why this site shows no predictions."""
     return {
         "system": "Glicko-2, implemented from scratch",
         "parameters": {"initial_rating": 1500, "initial_rd": 150,
@@ -189,21 +182,15 @@ app.include_router(router)
 
 
 # --- built single-page app --------------------------------------------------
-# Registered last so every API route above wins. With the frontend built,
-# `uvicorn src.api.main:app` serves the whole site on one port and Node is not
-# needed at all. During development the Vite server on :5173 is used instead
-# and talks to this API cross-origin, which is what the CORS block allows.
+# Registered last so API routes win; serves the whole site on one port.
 
 if DIST.is_dir():
     app.mount("/assets", StaticFiles(directory=DIST / "assets"), name="assets")
 
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa(full_path: str):
-        """Serve a real file when one exists, otherwise index.html.
-
-        The fallback is what makes client-side routing work: a hard refresh on
-        /fighters/1612 must return the app rather than a 404.
-        """
+        """Serve a real file if one exists, else index.html so a hard refresh
+        on a client-side route returns the app rather than a 404."""
         candidate = (DIST / full_path).resolve()
         if full_path and candidate.is_file() and DIST.resolve() in candidate.parents:
             return FileResponse(candidate)

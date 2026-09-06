@@ -29,13 +29,8 @@ def log_progress(event_url):
 
 
 def log_failed_bout(event_name, bout_url, error):
-    """Record a bout that could not be scraped, so failures stay visible.
-
-    The event is deliberately NOT checkpointed when this happens, so the next
-    run retries it. The trade-off is that a permanently unparseable bout makes
-    its event re-scrape every week -- cheap at one event, and far better than
-    the previous behaviour of silently dropping the bout forever.
-    """
+    """Record an unscrapeable bout. Its event is left uncheckpointed so the next
+    run retries, rather than silently dropping the bout forever."""
     os.makedirs(os.path.dirname(FAILED_BOUTS_LOG), exist_ok=True)
     with open(FAILED_BOUTS_LOG, "a", encoding="utf-8") as f:
         f.write(f"{datetime.now().isoformat()}\t{event_name}\t{bout_url}\t{error}\n")

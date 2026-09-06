@@ -5,12 +5,8 @@ from src.db.connection import get_connection
 
 @contextmanager
 def _cursor(conn=None):
-    """Yield a cursor, reusing a caller's connection when one is supplied.
-
-    Every writer here used to open and close its own connection, so a full
-    scrape made thousands of them. Passing a connection in lets the caller hold
-    one open for a whole event; omitting it keeps the original behaviour.
-    """
+    """Yield a cursor, reusing a caller's connection when supplied; otherwise
+    open and close one, as every writer here used to do per call."""
     owned = conn is None
     if owned:
         conn = get_connection()

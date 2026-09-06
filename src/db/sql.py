@@ -9,13 +9,8 @@ NON_DIVISIONS = ("Catch Weight", "Open Weight")
 
 
 def primary_division_cte(date_filter=""):
-    """A fighter's home division: most bouts, not most recent bout.
-
-    Inferring from the latest bout misfiled anyone who moved up once -- Usman
-    read as a middleweight, Makhachev as a welterweight, St-Pierre as a
-    middleweight. Ranking by bout count (preferring real divisions, then
-    recency as a tie-break) files a fighter where they actually competed.
-    """
+    """Home division by bout count, not latest bout. Inferring from the latest
+    misfiled anyone who moved up once -- Usman read as a middleweight."""
     return f"""
         primary_division AS (
             SELECT DISTINCT ON (fid) fid, weight_class

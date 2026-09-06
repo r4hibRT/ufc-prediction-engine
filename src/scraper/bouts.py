@@ -14,13 +14,8 @@ WEIGHT_CLASSES = [
 
 
 def parse_weight_class(title_text):
-    """Extract a division from a bout title.
-
-    Stripping the words "UFC"/"Bout"/"Title Bout" out of the raw title used to
-    leave debris like "4 Tournament" for old tournament cards. Matching against
-    the known divisions instead means anything unrecognised -- which in practice
-    is only the pre-2000 open tournaments -- lands on Open Weight.
-    """
+    """Match the title against known divisions; stripping words out of it left
+    debris like "4 Tournament". Anything unrecognised is an open-weight bout."""
     if not title_text:
         return None
     lowered = title_text.lower()
@@ -46,13 +41,8 @@ def scrape_bout_urls(event_url, page):
 
     return bout_urls
 def scrape_event_results(event_url, page):
-    """Read every bout's outcome off a single event page.
-
-    The event listing already carries a win/draw/nc flag per row plus both
-    fighter URLs, so one request settles a whole card. That is what makes
-    correcting historical outcomes affordable: 785 event pages instead of
-    8,833 individual bout pages.
-    """
+    """Read every bout outcome off one event page. The listing carries a
+    win/draw/nc flag and both fighter URLs, so one request settles a card."""
     page.goto(event_url, wait_until="networkidle", timeout=60000)
     soup = BeautifulSoup(page.content(), "html.parser")
 
@@ -90,9 +80,8 @@ def scrape_bout_details(bout_url, page):
     fighter_b_name = fighter_tags[1].get_text(strip=True)
     fighter_b_url = fighter_tags[1]["href"]
 
-    # Outcome — the status tag reads W/L for a decided bout, but D for a draw
-    # and NC for a no contest. Only an explicit "W" names a winner; anything
-    # else leaves the bout without one.
+    # The status tag reads W/L, but D for a draw and NC for a no contest, so
+    # only an explicit "W" names a winner.
     result_tags = soup.select("i.b-fight-details__person-status")
     statuses = [t.get_text(strip=True) for t in result_tags]
 

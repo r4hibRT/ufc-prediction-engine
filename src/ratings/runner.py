@@ -25,12 +25,8 @@ def get_bouts_chronological(cur):
 
 
 def compute_rolling_finish_rates(bouts):
-    """Trailing three-year finish rate as of each bout.
-
-    Built from a sorted date list plus a prefix sum of finishes, so each bout
-    costs two binary searches instead of a full rescan of history. The previous
-    version was quadratic -- roughly 78 million comparisons over 8,833 bouts.
-    """
+    """Trailing three-year finish rate per bout, via prefix sums and two binary
+    searches rather than rescanning history for every bout."""
     decided = sorted(
         (b[1], 1 if b[5] in ('KO/TKO', 'Submission') else 0)
         for b in bouts
@@ -87,9 +83,8 @@ def determine_outcome(winner_id, fighter_a_id, method, is_title_fight, expected_
         # Rows predating the outcome column: fall back to the old guess.
         return 0.5 if method == 'Decision' else None
 
-    # Score the WINNER, then map back to fighter A's perspective. Scoring from
-    # A's side meant the title weighting only ever reached fighter A, who wins
-    # 342 of 462 decided title fights purely because of scrape order.
+    # Score the winner, then map to A's perspective; scoring from A's side gave
+    # the title weighting only to fighter A, who wins 342 of 462 on scrape order.
     winner_is_a = (winner_id == fighter_a_id)
     expected_winner = expected_a if winner_is_a else 1.0 - expected_a
 
@@ -108,14 +103,8 @@ def elapsed_periods(previous_date, bout_date):
 
 
 def apply_cap(old_rating, new_fighter):
-    """Bound a single bout's rating move in BOTH directions.
-
-    Capping only gains meant a fighter could shed 300 points in a night but
-    never add more than 100. At the current INITIAL_RD of 150 the largest
-    possible move is about 86, so this never fires -- but it fired on 28% of
-    moves at the original INITIAL_RD of 350, so the symmetry matters the
-    moment that constant is retuned.
-    """
+    """Bound a bout's rating move in both directions. Inert at INITIAL_RD 150,
+    but it fired on 28% of moves at 350, so symmetry matters if that is retuned."""
     delta = new_fighter.rating - old_rating
     if abs(delta) > MAX_RATING_CHANGE:
         capped = old_rating + math.copysign(MAX_RATING_CHANGE, delta)
@@ -147,8 +136,7 @@ def run_ratings():
         if fighter_b_id not in fighters:
             fighters[fighter_b_id] = Glicko2Fighter()
 
-        # Rating periods since each fighter last competed. A debut counts as
-        # one period so a first bout behaves as it always did.
+        # Rating periods since each last competed; a debut counts as one.
         periods_a = elapsed_periods(last_bout_date.get(fighter_a_id), date_)
         periods_b = elapsed_periods(last_bout_date.get(fighter_b_id), date_)
 

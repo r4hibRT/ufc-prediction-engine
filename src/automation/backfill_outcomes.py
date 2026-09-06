@@ -36,13 +36,8 @@ def load_fighter_ids(cur):
 
 
 def load_bouts(cur):
-    """Index bouts by (unordered fighter pair, date).
-
-    The pair alone is not enough: 199 pairs have fought more than once, which
-    covers 418 bouts, and rematches are exactly where draws cluster. The date
-    disambiguates them completely, since a bout's date is the event's date and
-    the table already enforces UNIQUE(date, fighter_a_id, fighter_b_id).
-    """
+    """Index bouts by (unordered fighter pair, date). The pair alone is not
+    enough: 199 pairs fought more than once, and rematches are where draws cluster."""
     cur.execute("SELECT id, date, fighter_a_id, fighter_b_id, winner_id, outcome FROM bouts;")
     index = {}
     for bout_id, date_, a_id, b_id, winner_id, outcome in cur.fetchall():
