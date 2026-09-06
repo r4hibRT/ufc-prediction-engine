@@ -88,7 +88,7 @@ def physical_accessor(fighters_df):
     return get
 
 
-def build_raw_features(check=False, until=None):
+def build_raw_features(check=False, until=None, collect_snapshots=False):
     """Replay every bout. `until` truncates history, which exists so the
     point-in-time property can be tested: rows built from a truncated history
     must be identical to the same rows built from the full history."""
@@ -112,11 +112,21 @@ def build_raw_features(check=False, until=None):
         return state[fighter_id]
 
     rows = []
+    snapshots = []
     checked = 0
 
     for bout in bouts.itertuples(index=False):
         a_id, b_id = bout.fighter_a_id, bout.fighter_b_id
         st_a, st_b = get_state(a_id), get_state(b_id)
+
+        if collect_snapshots:
+            # Every bout, not just those producing a feature row, so the
+            # point-in-time view covers a fighter's whole career.
+            for fid, st in ((a_id, st_a), (b_id, st_b)):
+                snapshots.append({
+                    "bout_id": bout.bout_id, "fighter_id": fid,
+                    "date": bout.date, **st.snapshot(bout.date),
+                })
 
         # --- emit BEFORE updating state ---
         if bout.winner_id is not None and st_a.has_rating and st_b.has_rating:
@@ -143,7 +153,10 @@ def build_raw_features(check=False, until=None):
         prior_rating_b = st_b.rating
         seconds = fight_seconds(bout.round, bout.time)
 
-        if bout.outcome == "nc":
+        # A no contest still happened physically: statistics, cage time and
+        # activity accumulate, but the void result must not move the record.
+        counts_result = bout.outcome != "nc"
+        if not counts_result:
             result_a = result_b = None
         elif bout.winner_id is None:
             result_a = result_b = 0.5
@@ -155,8 +168,6 @@ def build_raw_features(check=False, until=None):
             (a_id, b_id, result_a, prior_rating_b),
             (b_id, a_id, result_b, prior_rating_a),
         ):
-            if result is None:
-                continue
             r = rating_lookup.get((fid, bout.bout_id)) or {}
             get_state(fid).update(
                 date=bout.date,
@@ -170,11 +181,14 @@ def build_raw_features(check=False, until=None):
                 opponent_prior_rating=prior_opp,
                 stats=stats_lookup.get((bout.bout_id, fid)),
                 opp_stats=stats_lookup.get((bout.bout_id, opp_id)),
+                counts_result=counts_result,
             )
 
     if check:
         print(f"  mirror rules asserted on {checked} rows")
 
+    if collect_snapshots:
+        return pd.DataFrame(rows), snapshots
     return pd.DataFrame(rows)
 
 

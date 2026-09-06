@@ -1,4 +1,5 @@
 from src.db.connection import get_connection
+from src.db.sql import primary_division_cte
 
 
 def get_peak_rating(fighter_id):
@@ -49,7 +50,10 @@ def get_career_arc(fighter_id):
 
     cur.execute("""
         SELECT r.date, r.rating, r.rd, b.method, b.weight_class,
-               f_a.name as opponent_name
+               f_a.name as opponent_name,
+               CASE WHEN b.outcome <> 'win' THEN b.outcome
+                    WHEN b.winner_id = %s THEN 'win' ELSE 'loss' END AS result,
+               b.is_title_fight, b.is_defence, b.id AS bout_id
         FROM ratings r
         JOIN bouts b ON r.bout_id = b.id
         JOIN fighters f_a ON (
@@ -60,7 +64,7 @@ def get_career_arc(fighter_id):
         )
         WHERE r.fighter_id = %s
         ORDER BY r.date ASC, r.id ASC;
-    """, (fighter_id, fighter_id))
+    """, (fighter_id, fighter_id, fighter_id))
 
     rows = cur.fetchall()
     cur.close()
@@ -73,7 +77,11 @@ def get_career_arc(fighter_id):
             "rd": row[2],
             "method": row[3],
             "weight_class": row[4],
-            "opponent": row[5]
+            "opponent": row[5],
+            "result": row[6],
+            "is_title_fight": row[7],
+            "is_defence": row[8],
+            "bout_id": row[9]
         }
         for row in rows
     ]
@@ -83,8 +91,9 @@ def get_peak_rankings(limit=25, min_bouts=8):
     conn = get_connection()
     cur = conn.cursor()
 
-    cur.execute("""
-        WITH peak_bout AS (
+    cur.execute(f"""
+        WITH {primary_division_cte()},
+        peak_bout AS (
             SELECT
                 fighter_id,
                 rating,
@@ -106,10 +115,7 @@ def get_peak_rankings(limit=25, min_bouts=8):
             r2.rating AS current_rating,
             r2.rd AS current_rd,
             bc.total_bouts,
-            (SELECT b.weight_class FROM bouts b
-             JOIN ratings r3 ON r3.bout_id = b.id
-             WHERE r3.fighter_id = f.id
-             ORDER BY r3.date DESC LIMIT 1) AS primary_division
+            (SELECT weight_class FROM primary_division WHERE fid = f.id) AS primary_division
         FROM peak_bout pb
         JOIN fighters f ON f.id = pb.fighter_id
         JOIN bout_counts bc ON bc.fighter_id = pb.fighter_id

@@ -35,3 +35,5 @@ logs/
 train_data.csv
 test_data.csv
 val_data.csv
+frontend/node_modules/
+frontend/dist/

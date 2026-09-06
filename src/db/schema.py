@@ -67,8 +67,50 @@ def create_tables():
         );
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS bout_snapshots (
+            bout_id INTEGER REFERENCES bouts(id),
+            fighter_id INTEGER REFERENCES fighters(id),
+            date DATE NOT NULL,
+            bouts_before INTEGER,
+            appearances_before INTEGER,
+            wins_before INTEGER,
+            win_streak INTEGER,
+            loss_streak INTEGER,
+            recent_form_5 NUMERIC(4,3),
+            rating_before NUMERIC(8,2),
+            rd_before NUMERIC(8,2),
+            peak_rating_before NUMERIC(8,2),
+            layoff_days INTEGER,
+            ko_losses INTEGER,
+            sub_losses INTEGER,
+            finishes INTEGER,
+            career_seconds INTEGER,
+            sig_landed INTEGER,
+            sig_attempted INTEGER,
+            sig_absorbed INTEGER,
+            td_landed INTEGER,
+            td_attempted INTEGER,
+            opp_td_landed INTEGER,
+            opp_td_attempted INTEGER,
+            control_seconds INTEGER,
+            sub_attempts INTEGER,
+            knockdowns INTEGER,
+            knockdowns_absorbed INTEGER,
+            avg_opponent_rating NUMERIC(8,2),
+            max_opponent_rating NUMERIC(8,2),
+            PRIMARY KEY (bout_id, fighter_id)
+        );
+    """)
+
+    cur.execute("""
+        CREATE INDEX IF NOT EXISTS idx_bout_snapshots_fighter
+        ON bout_snapshots (fighter_id, date);
+    """)
+
     # Additive migrations for databases created before these columns existed.
     cur.execute("ALTER TABLE bouts ADD COLUMN IF NOT EXISTS outcome VARCHAR(10);")
+    cur.execute("ALTER TABLE bout_snapshots ADD COLUMN IF NOT EXISTS appearances_before INTEGER;")
 
     conn.commit()
     cur.close()

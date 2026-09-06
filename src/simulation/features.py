@@ -124,7 +124,8 @@ class FighterState:
     """Everything known about a fighter from their previous bouts only."""
 
     def __init__(self):
-        self.bouts = 0
+        self.bouts = 0          # results that stood
+        self.appearances = 0    # times in the cage, no contests included
         self.wins = 0
         self.win_streak = 0
         self.loss_streak = 0
@@ -263,16 +264,95 @@ class FighterState:
             return NAN
         return (bout_date - first).days
 
+    def snapshot(self, bout_date):
+        """This fighter's state entering a bout, for the bout_snapshots table.
+
+        NaN becomes None so psycopg2 writes SQL NULL rather than the string
+        'nan'. Undefined is genuinely different from zero here: a debutant has
+        no strength of schedule, they do not have a strength of schedule of 0.
+        """
+        def clean(value):
+            if value is None:
+                return None
+            return None if value != value else value
+
+        return {
+            "bouts_before": self.bouts,
+            "appearances_before": self.appearances,
+            "wins_before": self.wins,
+            "win_streak": self.win_streak,
+            "loss_streak": self.loss_streak,
+            "recent_form_5": clean(self.recent_form_5),
+            "rating_before": clean(self.rating),
+            "rd_before": clean(self.rd),
+            "peak_rating_before": clean(self.peak_rating),
+            "layoff_days": clean(self.layoff(bout_date)),
+            "ko_losses": self.ko_losses,
+            "sub_losses": self.sub_losses,
+            "finishes": self.finishes,
+            "career_seconds": self.career_seconds,
+            "sig_landed": self.sig_landed,
+            "sig_attempted": self.sig_attempted,
+            "sig_absorbed": self.sig_absorbed,
+            "td_landed": self.td_landed,
+            "td_attempted": self.td_attempted,
+            "opp_td_landed": self.opp_td_landed,
+            "opp_td_attempted": self.opp_td_attempted,
+            "control_seconds": self.control_seconds,
+            "sub_attempts": self.sub_attempts,
+            "knockdowns": self.knockdowns,
+            "knockdowns_absorbed": self.knockdowns_absorbed,
+            "avg_opponent_rating": clean(self.avg_opponent_rating),
+            "max_opponent_rating": clean(self.max_opponent_rating),
+        }
+
     # --- state transition, called only AFTER a row has been emitted --------
 
     def update(self, *, date, weight_class, result, method, seconds,
-               rating, rd, volatility, opponent_prior_rating, stats, opp_stats):
-        self.bouts += 1
+               rating, rd, volatility, opponent_prior_rating, stats, opp_stats,
+               counts_result=True):
+        """Advance state after a bout.
+
+        `counts_result=False` for a no contest: the fighter still stepped into
+        the cage, absorbed damage and used up calendar, so activity, cage time,
+        strength of schedule and every fight statistic accumulate -- but the
+        result is void, so the win-loss record, streaks, form and finish rates
+        do not move. `bouts` counts results; `appearances` counts occasions.
+        """
+        # --- things that happened regardless of whether the result stood ---
+        self.appearances += 1
         self.bout_dates.append(date)
         self.last_bout_date = date
 
         self.division_bouts[weight_class] = self.division_bouts.get(weight_class, 0) + 1
         self.division_first_date.setdefault(weight_class, date)
+
+        if seconds:
+            self.career_seconds += seconds
+
+        if opponent_prior_rating is not None:
+            self.opponent_ratings.append(opponent_prior_rating)
+
+        if stats:
+            self.sig_landed += stats["sig_strikes_landed"] or 0
+            self.sig_attempted += stats["sig_strikes_attempted"] or 0
+            self.td_landed += stats["takedowns_landed"] or 0
+            self.td_attempted += stats["takedowns_attempted"] or 0
+            self.control_seconds += stats["control_time_seconds"] or 0
+            self.sub_attempts += stats["submission_attempts"] or 0
+            self.knockdowns += stats["knockdowns"] or 0
+
+        if opp_stats:
+            self.sig_absorbed += opp_stats["sig_strikes_landed"] or 0
+            self.opp_td_landed += opp_stats["takedowns_landed"] or 0
+            self.opp_td_attempted += opp_stats["takedowns_attempted"] or 0
+            self.knockdowns_absorbed += opp_stats["knockdowns"] or 0
+
+        if not counts_result:
+            return
+
+        # --- things that depend on the result standing ---
+        self.bouts += 1
 
         if result == 1:
             self.wins += 1
@@ -300,9 +380,6 @@ class FighterState:
             elif method == "Submission":
                 self.sub_losses += 1
 
-        if seconds:
-            self.career_seconds += seconds
-
         if rating is not None:
             self.rating = rating
             self.rd = rd
@@ -312,23 +389,6 @@ class FighterState:
                 self.peak_rating = rating
                 self.peak_date = date
 
-        if opponent_prior_rating is not None:
-            self.opponent_ratings.append(opponent_prior_rating)
-
-        if stats:
-            self.sig_landed += stats["sig_strikes_landed"] or 0
-            self.sig_attempted += stats["sig_strikes_attempted"] or 0
-            self.td_landed += stats["takedowns_landed"] or 0
-            self.td_attempted += stats["takedowns_attempted"] or 0
-            self.control_seconds += stats["control_time_seconds"] or 0
-            self.sub_attempts += stats["submission_attempts"] or 0
-            self.knockdowns += stats["knockdowns"] or 0
-
-        if opp_stats:
-            self.sig_absorbed += opp_stats["sig_strikes_landed"] or 0
-            self.opp_td_landed += opp_stats["takedowns_landed"] or 0
-            self.opp_td_attempted += opp_stats["takedowns_attempted"] or 0
-            self.knockdowns_absorbed += opp_stats["knockdowns"] or 0
 
 
 def _timedelta(days):

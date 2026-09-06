@@ -1,0 +1,325 @@
+"""Analytics queries for the API layer.
+
+Rating-specific views live in src/ratings/queries.py. This module holds the
+aggregate, point-in-time and comparison queries the front end needs, all
+read-only.
+
+Two conventions used throughout:
+
+  * A fighter's record counts results that stood; no contests are reported
+    separately, matching how MMA records are normally written (14-3, 1 NC).
+  * "Division" is inferred from a fighter's most recent bout. Fighters who
+    changed weight class are therefore filed under their latest one -- see
+    docs/product-spec.md section 9.
+"""
+
+from src.db.connection import get_connection
+from src.db.sql import primary_division_cte
+
+ACTIVE_WINDOW_DAYS = 730
+
+def _rows(sql, params=(), conn=None):
+    owned = conn is None
+    if owned:
+        conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(sql, params)
+    cols = [d[0] for d in cur.description]
+    out = [dict(zip(cols, r)) for r in cur.fetchall()]
+    cur.close()
+    if owned:
+        conn.close()
+    return out
+
+
+def _one(sql, params=(), conn=None):
+    rows = _rows(sql, params, conn)
+    return rows[0] if rows else None
+
+
+RECORD_SQL = """
+    SELECT
+        COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id = %(fid)s)  AS wins,
+        COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id <> %(fid)s) AS losses,
+        COUNT(*) FILTER (WHERE b.outcome = 'draw')                           AS draws,
+        COUNT(*) FILTER (WHERE b.outcome = 'nc')                             AS no_contests,
+        COUNT(*)                                                             AS appearances,
+        COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id = %(fid)s
+                         AND b.method = 'KO/TKO')                            AS ko_wins,
+        COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id = %(fid)s
+                         AND b.method = 'Submission')                        AS sub_wins,
+        COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id = %(fid)s
+                         AND b.method = 'Decision')                          AS dec_wins,
+        COUNT(*) FILTER (WHERE b.is_title_fight)                             AS title_fights,
+        COUNT(*) FILTER (WHERE b.is_defence)                                 AS title_defences,
+        MIN(b.date) AS debut, MAX(b.date) AS last_bout
+    FROM bouts b
+    WHERE b.fighter_a_id = %(fid)s OR b.fighter_b_id = %(fid)s
+"""
+
+
+def search_fighters(q, limit=20, conn=None):
+    return _rows("""
+        SELECT f.id, f.name, f.stance, f.height, f.reach,
+               r.rating AS current_rating, r.date AS last_rated
+        FROM fighters f
+        LEFT JOIN LATERAL (
+            SELECT rating, date FROM ratings
+            WHERE fighter_id = f.id ORDER BY date DESC, id DESC LIMIT 1
+        ) r ON TRUE
+        WHERE f.name ILIKE %s
+        ORDER BY (r.rating IS NULL), r.rating DESC NULLS LAST, f.name
+        LIMIT %s;
+    """, (f"%{q}%", limit), conn)
+
+
+def get_fighter(fighter_id, conn=None):
+    """Profile: physicals, record, current and peak rating, division."""
+    profile = _one(f"""
+        WITH {primary_division_cte()}
+        SELECT f.id, f.name, f.dob, f.height, f.reach, f.stance,
+               r.rating AS current_rating, r.rd AS current_rd, r.date AS last_rated,
+               p.rating AS peak_rating, p.date AS peak_date,
+               (SELECT weight_class FROM primary_division WHERE fid = f.id) AS division
+        FROM fighters f
+        LEFT JOIN LATERAL (
+            SELECT rating, rd, date FROM ratings
+            WHERE fighter_id = f.id ORDER BY date DESC, id DESC LIMIT 1
+        ) r ON TRUE
+        LEFT JOIN LATERAL (
+            SELECT rating, date FROM ratings
+            WHERE fighter_id = f.id ORDER BY rating DESC LIMIT 1
+        ) p ON TRUE
+        WHERE f.id = %s;
+    """, (fighter_id,), conn)
+
+    if profile is None:
+        return None
+    profile["record"] = _one(RECORD_SQL, {"fid": fighter_id}, conn)
+    return profile
+
+
+def get_fighter_stats(fighter_id, conn=None):
+    """Career aggregates, plus the same numbers as they stood entering the
+    fighter's most recent bout (the point-in-time view)."""
+    career = _one("""
+        SELECT
+            COALESCE(SUM(bs.sig_strikes_landed), 0)      AS sig_landed,
+            COALESCE(SUM(bs.sig_strikes_attempted), 0)   AS sig_attempted,
+            COALESCE(SUM(bs.takedowns_landed), 0)        AS td_landed,
+            COALESCE(SUM(bs.takedowns_attempted), 0)     AS td_attempted,
+            COALESCE(SUM(bs.submission_attempts), 0)     AS sub_attempts,
+            COALESCE(SUM(bs.knockdowns), 0)              AS knockdowns,
+            COALESCE(SUM(bs.control_time_seconds), 0)    AS control_seconds,
+            COALESCE(SUM(opp.sig_strikes_landed), 0)     AS sig_absorbed,
+            COALESCE(SUM(opp.takedowns_landed), 0)       AS opp_td_landed,
+            COALESCE(SUM(opp.takedowns_attempted), 0)    AS opp_td_attempted,
+            COALESCE(SUM(opp.knockdowns), 0)             AS knockdowns_absorbed,
+            COUNT(*)                                     AS bouts_with_stats
+        FROM bout_stats bs
+        JOIN bout_stats opp ON opp.bout_id = bs.bout_id AND opp.fighter_id <> bs.fighter_id
+        WHERE bs.fighter_id = %s;
+    """, (fighter_id,), conn)
+
+    latest = _one("""
+        SELECT * FROM bout_snapshots
+        WHERE fighter_id = %s ORDER BY date DESC LIMIT 1;
+    """, (fighter_id,), conn)
+
+    # Career cage time must come from the bouts themselves. The latest
+    # snapshot holds time entering that bout, so using it would omit the most
+    # recent fight and inflate every per-minute rate.
+    seconds = _one("""
+        SELECT COALESCE(SUM(
+            (b.round - 1) * 300
+            + split_part(b.time, ':', 1)::int * 60
+            + split_part(b.time, ':', 2)::int
+        ), 0) AS total
+        FROM bouts b
+        WHERE (b.fighter_a_id = %s OR b.fighter_b_id = %s)
+          AND b.round IS NOT NULL AND b.time ~ '^[0-9]+:[0-9]+$';
+    """, (fighter_id, fighter_id), conn)
+
+    total_seconds = (seconds or {}).get("total") or 0
+    minutes = total_seconds / 60.0 if total_seconds else None
+
+    def rate(total, per=1.0):
+        if not minutes or total is None:
+            return None
+        return round(total / minutes * per, 3)
+
+    def pct(num, den):
+        if not den:
+            return None
+        return round(num / den, 3)
+
+    career_rates = {
+        "minutes_fought": round(minutes, 1) if minutes else None,
+        "sig_strikes_per_min": rate(career["sig_landed"]),
+        "sig_absorbed_per_min": rate(career["sig_absorbed"]),
+        "striking_differential": (
+            None if not minutes else
+            round((career["sig_landed"] - career["sig_absorbed"]) / minutes, 3)),
+        "sig_accuracy": pct(career["sig_landed"], career["sig_attempted"]),
+        "takedowns_per_15": rate(career["td_landed"], 15),
+        "takedown_accuracy": pct(career["td_landed"], career["td_attempted"]),
+        "takedown_defence": (
+            None if not career["opp_td_attempted"] else
+            round(1 - career["opp_td_landed"] / career["opp_td_attempted"], 3)),
+        # Share of cage time spent in control, not "seconds per minute".
+        "control_share": (
+            None if not total_seconds else
+            round(career["control_seconds"] / total_seconds, 3)),
+        "sub_attempts_per_15": rate(career["sub_attempts"], 15),
+        "knockdowns_per_15": rate(career["knockdowns"], 15),
+        "knockdowns_absorbed_per_15": rate(career["knockdowns_absorbed"], 15),
+    }
+
+    return {"totals": career, "rates": career_rates, "entering_last_bout": latest}
+
+
+def get_fighter_stats_entering(fighter_id, bout_id, conn=None):
+    """The point-in-time differentiator: what this fighter's numbers looked
+    like walking into one specific bout."""
+    return _one("""
+        SELECT s.*, b.date AS bout_date, b.weight_class,
+               opp.name AS opponent
+        FROM bout_snapshots s
+        JOIN bouts b ON b.id = s.bout_id
+        JOIN fighters opp ON opp.id = CASE WHEN b.fighter_a_id = s.fighter_id
+                                           THEN b.fighter_b_id ELSE b.fighter_a_id END
+        WHERE s.fighter_id = %s AND s.bout_id = %s;
+    """, (fighter_id, bout_id), conn)
+
+
+def get_current_rankings(limit=25, division=None, conn=None):
+    """Active fighters by current rating. Active = fought inside the window."""
+    return _rows(f"""
+        WITH latest AS (
+            SELECT DISTINCT ON (fighter_id) fighter_id, rating, rd, date
+            FROM ratings ORDER BY fighter_id, date DESC, id DESC
+        ),
+        {primary_division_cte()}
+        SELECT ROW_NUMBER() OVER (ORDER BY l.rating - 2 * l.rd DESC) AS rank,
+               f.id, f.name, ROUND(l.rating, 1) AS rating, ROUND(l.rd, 1) AS rd,
+               ROUND(l.rating - 2 * l.rd, 1) AS adjusted, l.date AS last_bout,
+               div.weight_class AS division
+        FROM latest l
+        JOIN fighters f ON f.id = l.fighter_id
+        LEFT JOIN primary_division div ON div.fid = l.fighter_id
+        WHERE l.date >= (SELECT MAX(date) FROM bouts) - make_interval(days => %s)
+          AND (%s::text IS NULL OR div.weight_class = %s)
+        ORDER BY adjusted DESC
+        LIMIT %s;
+    """, (ACTIVE_WINDOW_DAYS, division, division, limit), conn)
+
+
+def get_rankings_asof(as_of, limit=25, division=None, conn=None):
+    """Time machine: the board as it stood on any past date.
+
+    Nobody else publishes this, and it is a single query because every rating
+    at every date is already stored.
+    """
+    return _rows(f"""
+        WITH latest AS (
+            SELECT DISTINCT ON (fighter_id) fighter_id, rating, rd, date
+            FROM ratings WHERE date <= %s
+            ORDER BY fighter_id, date DESC, id DESC
+        ),
+        {primary_division_cte("WHERE date <= %s")}
+        SELECT ROW_NUMBER() OVER (ORDER BY l.rating - 2 * l.rd DESC) AS rank,
+               f.id, f.name, ROUND(l.rating, 1) AS rating, ROUND(l.rd, 1) AS rd,
+               ROUND(l.rating - 2 * l.rd, 1) AS adjusted, l.date AS last_bout,
+               div.weight_class AS division
+        FROM latest l
+        JOIN fighters f ON f.id = l.fighter_id
+        LEFT JOIN primary_division div ON div.fid = l.fighter_id
+        WHERE l.date >= %s::date - make_interval(days => %s)
+          AND (%s::text IS NULL OR div.weight_class = %s)
+        ORDER BY adjusted DESC
+        LIMIT %s;
+    """, (as_of, as_of, as_of, as_of, ACTIVE_WINDOW_DAYS, division, division, limit), conn)
+
+
+def get_movers(event_date=None, limit=15, conn=None):
+    """Biggest rating changes from the most recent card.
+
+    The weekly hook: what changed after Saturday.
+    """
+    return _rows("""
+        WITH target AS (
+            SELECT COALESCE(%s::date, (SELECT MAX(date) FROM bouts)) AS d
+        )
+        SELECT f.name, f.id,
+               ROUND(s.rating_before, 1) AS before,
+               ROUND(r.rating, 1) AS after,
+               ROUND(r.rating - s.rating_before, 1) AS change,
+               b.date, opp.name AS opponent,
+               CASE WHEN b.outcome <> 'win' THEN b.outcome
+                    WHEN b.winner_id = s.fighter_id THEN 'win' ELSE 'loss' END AS result,
+               b.method
+        FROM bout_snapshots s
+        JOIN target t ON s.date = t.d
+        JOIN bouts b ON b.id = s.bout_id
+        JOIN ratings r ON r.bout_id = s.bout_id AND r.fighter_id = s.fighter_id
+        JOIN fighters f ON f.id = s.fighter_id
+        JOIN fighters opp ON opp.id = CASE WHEN b.fighter_a_id = s.fighter_id
+                                           THEN b.fighter_b_id ELSE b.fighter_a_id END
+        WHERE s.rating_before IS NOT NULL
+        ORDER BY ABS(r.rating - s.rating_before) DESC
+        LIMIT %s;
+    """, (event_date, limit), conn)
+
+
+def get_common_opponents(a_id, b_id, conn=None):
+    return _rows("""
+        WITH faced AS (
+            SELECT CASE WHEN b.fighter_a_id = %(f)s THEN b.fighter_b_id
+                        ELSE b.fighter_a_id END AS opp_id,
+                   b.date, b.outcome, b.winner_id, %(f)s AS self_id
+            FROM bouts b
+            WHERE b.fighter_a_id = %(f)s OR b.fighter_b_id = %(f)s
+        )
+        SELECT o.name AS opponent, x.date, x.self_id,
+               CASE WHEN x.outcome <> 'win' THEN x.outcome
+                    WHEN x.winner_id = x.self_id THEN 'win' ELSE 'loss' END AS result
+        FROM faced x JOIN fighters o ON o.id = x.opp_id
+        WHERE x.opp_id IN (
+            SELECT CASE WHEN b.fighter_a_id = %(g)s THEN b.fighter_b_id
+                        ELSE b.fighter_a_id END
+            FROM bouts b WHERE b.fighter_a_id = %(g)s OR b.fighter_b_id = %(g)s
+        )
+        ORDER BY o.name, x.date;
+    """, {"f": a_id, "g": b_id}, conn)
+
+
+def compare_fighters(a_id, b_id, conn=None):
+    """Descriptive comparison only -- no win probability. See the rating card
+    for why: among two experienced fighters the rating is near a coin flip."""
+    conn_owned = conn is None
+    if conn_owned:
+        conn = get_connection()
+    try:
+        a = get_fighter(a_id, conn)
+        b = get_fighter(b_id, conn)
+        if a is None or b is None:
+            return None
+        common_a = get_common_opponents(a_id, b_id, conn)
+        common_b = get_common_opponents(b_id, a_id, conn)
+        head_to_head = _rows("""
+            SELECT b.date, b.weight_class, b.method, b.outcome, b.winner_id
+            FROM bouts b
+            WHERE (b.fighter_a_id = %s AND b.fighter_b_id = %s)
+               OR (b.fighter_a_id = %s AND b.fighter_b_id = %s)
+            ORDER BY b.date;
+        """, (a_id, b_id, b_id, a_id), conn)
+        return {
+            "a": a, "b": b,
+            "a_stats": get_fighter_stats(a_id, conn),
+            "b_stats": get_fighter_stats(b_id, conn),
+            "head_to_head": head_to_head,
+            "common_opponents": {"a": common_a, "b": common_b},
+        }
+    finally:
+        if conn_owned:
+            conn.close()
