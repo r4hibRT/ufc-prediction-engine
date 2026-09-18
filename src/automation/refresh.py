@@ -4,8 +4,8 @@ Designed to be run by a scheduler once a week, after the weekend's card has
 settled. Every step is idempotent, so a re-run after a partial failure is safe.
 
 Steps:
-  1. scrape newly completed events (incremental -- progress.log gates what is
-     re-fetched, so this normally costs one events-list request plus whatever
+  1. scrape newly completed events (incremental -- the events table gates what
+     is re-fetched, so this normally costs one events-list request plus whatever
      bouts are genuinely new)
   2. recompute Glicko-2 ratings from scratch (~6s over ~8.8k bouts, cheap
      enough that incremental rating updates are not worth the complexity)
@@ -92,12 +92,16 @@ def release_lock():
 
 
 def step_scrape(dry_run=False):
-    """Scrape any completed events not already in progress.log."""
+    """Scrape any completed event not yet recorded as complete in the events table."""
     from playwright.sync_api import sync_playwright
     from src.scraper.events import scrape_events, scrape_upcoming_events
-    from src.scraper.pipeline import run_pipeline, load_progress
+    from src.scraper.pipeline import run_pipeline, parse_date
+    from src.db.events import completed_urls, seed_from_file, sync_metadata
 
-    completed_urls = load_progress()
+    seeded = seed_from_file()
+    if seeded:
+        log(f"Seeded checkpoint from progress.log: {seeded} events.")
+    done = completed_urls()
 
     with sync_playwright() as p:
         browser = p.chromium.launch(headless=True)
@@ -105,8 +109,10 @@ def step_scrape(dry_run=False):
         try:
             events = scrape_events(page)
             upcoming = scrape_upcoming_events(page)
+            if not dry_run:
+                sync_metadata([(e["url"], e["name"], parse_date(e["date"])) for e in events])
 
-            pending = [e for e in events if e["url"] not in completed_urls]
+            pending = [e for e in events if e["url"] not in done]
             log(f"Site lists {len(events)} completed events; {len(pending)} not yet scraped.")
             log(f"Next scheduled card: {upcoming[0]['date']} - {upcoming[0]['name']}"
                 if upcoming else "No upcoming events listed.")
@@ -123,7 +129,7 @@ def step_scrape(dry_run=False):
             # run is interrupted partway through the backlog.
             run_pipeline(list(reversed(pending)), page)
 
-            remaining = [e for e in events if e["url"] not in load_progress()]
+            remaining = [e for e in events if e["url"] not in completed_urls()]
             scraped = len(pending) - len(remaining)
             return {"new_events": scraped, "still_pending": len(remaining),
                     "upcoming": len(upcoming)}
@@ -150,6 +156,18 @@ def step_snapshots(dry_run=False):
         return {"skipped": "dry-run"}
 
     return write_snapshots(verbose=True)
+
+
+def report_health():
+    """Record pipeline health after every run; a broken check must not mask the run."""
+    try:
+        from src.automation.health import check, write_report
+        report = check()
+        write_report(report)
+        failing = [c["name"] for c in report["checks"] if not c["ok"]]
+        log("Health: ok" if report["ok"] else f"Health: UNHEALTHY -- {', '.join(failing)}")
+    except Exception as exc:
+        log(f"Health check itself failed: {type(exc).__name__}: {exc}")
 
 
 STEPS = [
@@ -234,6 +252,7 @@ def main():
                 "results": results,
                 "log": log_path.name,
             }, indent=2, default=str), encoding="utf-8")
+            report_health()
 
         return 1 if failed_step else 0
     finally:
