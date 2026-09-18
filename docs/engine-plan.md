@@ -84,8 +84,11 @@ Tick each box as it is committed. One step = one commit on this branch.
   0.6515 vs 0.6763 rating only (−0.0248 [−0.0312, −0.0185], 7/7 years), AUC
   0.661, ECE 0.015, deciles within ~0.04. 2026 holdout (n=386, looked at once):
   0.6286 vs 0.6822 rating only. Nearest rejected block: debut (CI crosses 0).
-- [ ] **6. Artifact** — persist fitted model + scaler + feature list + rating
-  constants + metrics sidecar to `models/` (versioned by date).
+- [x] **6. Artifact** — persist fitted model + scaler + feature list + rating
+  constants + metrics sidecar to `models/` (versioned by date). The model is
+  linear, so `src/engine/artifact.py` stores plain JSON (per-unit coefficients,
+  constants, validation metrics) instead of a pickle; `predict()` is a dot
+  product and matches sklearn to 1e-16. First artifact: `models/engine-2026-09-18.json`.
 - [ ] **7. Inference and record** — current-state features for upcoming bouts,
   a `predictions` table written **before** each card and scored after, both
   wired into the weekly refresh.

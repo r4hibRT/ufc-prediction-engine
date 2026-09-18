@@ -1,0 +1,60 @@
+{
+  "version": "2026-09-18",
+  "trained_through": "2026-09-12",
+  "n_train": 8726,
+  "columns": [
+    "rating",
+    "age",
+    "age_over_30",
+    "slpm",
+    "sapm",
+    "str_acc"
+  ],
+  "coefficients": {
+    "rating": 0.4081826741549095,
+    "age": -0.041712658479825346,
+    "age_over_30": -0.03801829211941985,
+    "slpm": 0.12877101325115456,
+    "sapm": -0.20309929816722197,
+    "str_acc": 0.602078697457928
+  },
+  "blocks": [
+    "age",
+    "striking"
+  ],
+  "C": 0.01,
+  "rating_params": {
+    "initial_rd": 400,
+    "initial_volatility": 0.7,
+    "tau": 0.5
+  },
+  "feature_constants": {
+    "K_MINUTES": 15,
+    "K_ATTEMPTS": 20,
+    "K_BOUTS": 3,
+    "DIVISION_MINUTES": 600,
+    "DEBUT_LAYOFF_DAYS": 180,
+    "ASSUMED_AGE": 29.5,
+    "REACH_PER_HEIGHT": 1.02
+  },
+  "validation": {
+    "years": [
+      2019,
+      2020,
+      2021,
+      2022,
+      2023,
+      2024,
+      2025
+    ],
+    "log_loss": 0.6514630457056191,
+    "brier": 0.2299570208188539,
+    "auc": 0.6607575517637279,
+    "ece": 0.014562264385998022,
+    "n": 3482.0,
+    "log_loss_ci": [
+      0.6428478014974082,
+      0.6595728817749729
+    ]
+  }
+}
