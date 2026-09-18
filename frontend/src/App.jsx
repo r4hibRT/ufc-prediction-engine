@@ -3,6 +3,7 @@ import Rankings from './pages/Rankings';
 import Fighters from './pages/Fighters';
 import Fighter from './pages/Fighter';
 import Placeholder from './pages/Placeholder';
+import ThemeToggle from './ThemeToggle';
 
 const TABS = [
   { to: '/rankings', label: 'Rankings' },
@@ -19,7 +20,7 @@ export default function App() {
       <header className="masthead">
         <div className="masthead-inner">
           <div className="wordmark">
-            UFC Ratings <span>1994&ndash;2026</span>
+            UFC<em>/</em>RATINGS <span>1994&ndash;2026</span>
           </div>
           <nav className="tabs">
             {TABS.map((t) => (
@@ -32,6 +33,7 @@ export default function App() {
               </NavLink>
             ))}
           </nav>
+          <ThemeToggle />
         </div>
       </header>
 

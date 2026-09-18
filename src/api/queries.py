@@ -316,3 +316,96 @@ def compare_fighters(a_id, b_id, conn=None):
     finally:
         if conn_owned:
             conn.close()
+# Road to UFC and Contender Series tournament finals carry a "title" in their
+# bout name, so a championship needs at least one established fighter in it.
+MIN_TITLE_EXPERIENCE = 5
+
+REAL_TITLE_FIGHTS = """
+    real_titles AS (
+        SELECT b.id, b.winner_id, b.weight_class, b.is_defence, b.outcome, b.date
+        FROM bouts b
+        JOIN bout_snapshots sa ON sa.bout_id = b.id AND sa.fighter_id = b.fighter_a_id
+        JOIN bout_snapshots sb ON sb.bout_id = b.id AND sb.fighter_id = b.fighter_b_id
+        WHERE b.is_title_fight
+          AND GREATEST(sa.appearances_before, sb.appearances_before) >= %(min_title_exp)s
+    )
+"""
+
+
+def get_p4p_rankings(limit=50, min_bouts=8, conn=None):
+    """Ranking table built from what an MMA fan actually compares: title wins,
+    championship divisions, best win, and the rating with its uncertainty."""
+    return _rows(f"""
+        WITH {primary_division_cte()},
+        {REAL_TITLE_FIGHTS},
+        peak AS (
+            SELECT DISTINCT ON (fighter_id) fighter_id, rating, rd, date
+            FROM ratings ORDER BY fighter_id, rating DESC
+        ),
+        counts AS (
+            SELECT fighter_id, COUNT(*) AS rated_bouts FROM ratings GROUP BY fighter_id
+        ),
+        record AS (
+            SELECT f.id AS fid,
+                   COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id = f.id)  AS wins,
+                   COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id <> f.id) AS losses,
+                   COUNT(*) FILTER (WHERE b.outcome = 'draw')                        AS draws
+            FROM fighters f
+            JOIN bouts b ON b.fighter_a_id = f.id OR b.fighter_b_id = f.id
+            GROUP BY f.id
+        ),
+        titles AS (
+            SELECT winner_id AS fid,
+                   COUNT(*) AS title_wins,
+                   COUNT(*) FILTER (WHERE is_defence) AS defences,
+                   COUNT(DISTINCT weight_class) AS title_divisions
+            FROM real_titles
+            WHERE outcome = 'win' AND winner_id IS NOT NULL
+            GROUP BY winner_id
+        ),
+        best_win AS (
+            SELECT DISTINCT ON (s.fighter_id) s.fighter_id AS fid,
+                   opp.name AS best_win_name,
+                   ROUND(os.rating_before, 0) AS best_win_rating,
+                   b.date AS best_win_date
+            FROM bouts b
+            JOIN bout_snapshots s  ON s.bout_id = b.id AND s.fighter_id = b.winner_id
+            JOIN bout_snapshots os ON os.bout_id = b.id AND os.fighter_id <> b.winner_id
+            JOIN fighters opp ON opp.id = os.fighter_id
+            WHERE b.outcome = 'win' AND os.rating_before IS NOT NULL
+            ORDER BY s.fighter_id, os.rating_before DESC
+        ),
+        streak AS (
+            SELECT fighter_id AS fid, MAX(win_streak) AS best_streak
+            FROM bout_snapshots GROUP BY fighter_id
+        )
+        SELECT ROW_NUMBER() OVER (ORDER BY ranked.score DESC) AS rank, ranked.*
+        FROM (
+        SELECT (p.rating - 2 * p.rd) AS score,
+               f.id, f.name,
+               div.weight_class AS division,
+               ROUND(p.rating, 0) AS peak_rating,
+               ROUND(p.rd, 0)     AS rd,
+               ROUND(p.rating - 2 * p.rd, 0) AS adjusted,
+               r.wins, r.losses, r.draws,
+               COALESCE(t.title_wins, 0)      AS title_wins,
+               COALESCE(t.defences, 0)        AS title_defences,
+               COALESCE(t.title_divisions, 0) AS title_divisions,
+               bw.best_win_name, bw.best_win_rating,
+               GREATEST(COALESCE(st.best_streak, 0),
+                        CASE WHEN r.wins > 0 THEN 1 ELSE 0 END) AS best_streak,
+               c.rated_bouts
+        FROM peak p
+        JOIN fighters f ON f.id = p.fighter_id
+        JOIN counts c ON c.fighter_id = p.fighter_id
+        JOIN record r ON r.fid = p.fighter_id
+        LEFT JOIN primary_division div ON div.fid = p.fighter_id
+        LEFT JOIN titles t ON t.fid = p.fighter_id
+        LEFT JOIN best_win bw ON bw.fid = p.fighter_id
+        LEFT JOIN streak st ON st.fid = p.fighter_id
+        WHERE c.rated_bouts >= %(min_bouts)s
+        ) ranked
+        ORDER BY ranked.score DESC
+        LIMIT %(limit)s;
+    """, {"min_bouts": min_bouts, "limit": limit,
+          "min_title_exp": MIN_TITLE_EXPERIENCE}, conn)

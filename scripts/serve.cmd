@@ -21,7 +21,7 @@ popd
 :serve
 set "PYTHONPATH=%ROOT%"
 echo.
-echo   Open http://localhost:8000
+echo   Open http://localhost:8420
 echo.
-"%UFC_PYTHON%" -m uvicorn src.api.main:app --port 8000
+"%UFC_PYTHON%" -m uvicorn src.api.main:app --port 8420
 popd

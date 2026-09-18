@@ -4,7 +4,7 @@ Read-only. No authentication, no prediction surface -- see
 docs/product-spec.md for why prediction is deferred.
 
 Run:
-    uvicorn src.api.main:app --reload
+    uvicorn src.api.main:app --port 8420 --reload
 """
 
 from datetime import date
@@ -36,7 +36,7 @@ router = APIRouter(prefix="/api")
 # The SPA is served separately in development.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000"],
+    allow_origins=["http://localhost:5180"],
     allow_methods=["GET"],
     allow_headers=["*"],
 )
@@ -62,18 +62,10 @@ def health():
 # --- rankings ---------------------------------------------------------------
 
 @router.get("/rankings", tags=["rankings"])
-def rankings(limit: int = Query(25, ge=1, le=200),
+def rankings(limit: int = Query(50, ge=1, le=200),
              min_bouts: int = Query(8, ge=1)):
-    """All-time peak rankings, ordered by peak rating less two RDs."""
-    return rq.get_peak_rankings(limit=limit, min_bouts=min_bouts)
-
-
-@router.get("/rankings/current", tags=["rankings"])
-def rankings_current(limit: int = Query(25, ge=1, le=200),
-                     division: str | None = None):
-    """Active fighters by current rating. Active means a bout inside the
-    trailing two years."""
-    return q.get_current_rankings(limit=limit, division=division)
+    """All-time pound-for-pound board with championship and resume context."""
+    return q.get_p4p_rankings(limit=limit, min_bouts=min_bouts)
 
 
 @router.get("/rankings/asof/{as_of}", tags=["rankings"])

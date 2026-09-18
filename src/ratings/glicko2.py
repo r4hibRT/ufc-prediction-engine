@@ -5,9 +5,12 @@ INITIAL_RATING = 1500
 INITIAL_RD = 150
 INITIAL_VOLATILITY = 0.06
 
-# One rating period in days. Six months matches UFC cadence and is what turns
-# a layoff into growing uncertainty.
+# One rating period in days. Six months matches UFC cadence.
 RATING_PERIOD_DAYS = 182.5
+
+# Staleness per period, in rating points. Swept 0-80 against held-out fights:
+# every increase degraded Brier, AUC and accuracy monotonically, so it stays 0.
+RD_DECAY_C = 0.0
 
 
 class Glicko2Fighter:
@@ -110,9 +113,11 @@ def update_ratings(fighter, opponent, outcome, periods_fighter=1.0, periods_oppo
         delta = _compute_delta(mu, opponents, outcomes, v)
         new_volatility = _compute_new_volatility(phi, f.volatility, v, delta)
 
-        # Uncertainty grows with time, clamped so a long layoff cannot exceed
-        # "completely unknown".
-        phi_star = math.sqrt(phi ** 2 + new_volatility ** 2 * max(periods, 0.0))
+        # Uncertainty grows with elapsed time, clamped so a long layoff cannot
+        # exceed "completely unknown".
+        elapsed = max(periods, 0.0)
+        drift = new_volatility ** 2 + (RD_DECAY_C / 173.7178) ** 2
+        phi_star = math.sqrt(phi ** 2 + drift * elapsed)
         phi_star = min(phi_star, INITIAL_RD / 173.7178)
 
         new_phi = 1 / math.sqrt(1 / phi_star ** 2 + 1 / v)

@@ -20,7 +20,7 @@ function TrajectoryTooltip({ active, payload }) {
   const p = payload[0].payload;
   return (
     <div className="tip">
-      <div className="tip-date mono">{p.date}</div>
+      <div className="tip-date">{p.date}</div>
       <div className="tip-op">
         <span className={`res res-${p.result}`}>{p.result}</span> vs {p.opponent}
       </div>
@@ -28,18 +28,37 @@ function TrajectoryTooltip({ active, payload }) {
         {p.method}
         {p.is_title_fight ? (p.is_defence ? ' · title defence' : ' · title fight') : ''}
       </div>
-      <div className="tip-rating mono">
+      <div className="tip-rating">
         {p.rating.toFixed(0)} <span>± {(2 * p.rd).toFixed(0)}</span>
       </div>
     </div>
   );
 }
 
+// A custom shape is invoked for empty rows too, so each marker checks its own
+// key or the unused series pile up along the top of the axis.
+const marker = (key, render) => (props) =>
+  props?.payload?.[key] == null ? null : render(props);
+
+const WinDot = marker('win', ({ cx, cy }) => (
+  <circle cx={cx} cy={cy} r={4.5} fill="var(--text)" />
+));
+
+const LossDot = marker('loss', ({ cx, cy }) => (
+  <circle cx={cx} cy={cy} r={4.5} fill="var(--surface)"
+          stroke="var(--text-dim)" strokeWidth={1.8} />
+));
+
+const OtherDot = marker('other', ({ cx, cy }) => (
+  <circle cx={cx} cy={cy} r={3.5} fill="var(--text-dim)" />
+));
+
+
 function Stat({ label, value, sub }) {
   return (
     <div className="stat">
       <span className="stat-label">{label}</span>
-      <b className="mono">{value}</b>
+      <b>{value}</b>
       {sub && <span className="stat-sub">{sub}</span>}
     </div>
   );
@@ -86,7 +105,7 @@ export default function Fighter() {
   return (
     <>
       <div className="page-head">
-        <Link to="/fighters" className="backlink mono">&larr; Fighters</Link>
+        <Link to="/fighters" className="backlink">&larr; All fighters</Link>
         <h1>{f.name}</h1>
         <p>
           {f.division} · {recordLine}
@@ -118,31 +137,30 @@ export default function Fighter() {
             <ResponsiveContainer width="100%" height={340}>
               <ComposedChart data={series} margin={{ top: 10, right: 16, bottom: 4, left: 0 }}>
                 <CartesianGrid stroke="var(--line)" vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--faint)' }}
+                <XAxis dataKey="date" tick={{ fontSize: 11, fill: 'var(--text-dim)' }}
                        tickLine={false} axisLine={{ stroke: 'var(--line)' }} minTickGap={40} />
                 <YAxis domain={['dataMin - 40', 'dataMax + 40']}
                        tickFormatter={(v) => Math.round(v)}
-                       tick={{ fontSize: 11, fill: 'var(--faint)' }}
+                       tick={{ fontSize: 11, fill: 'var(--text-dim)' }}
                        tickLine={false} axisLine={false} width={54} />
                 <ReferenceLine y={1500} stroke="var(--line-strong)" strokeDasharray="3 3"
-                               label={{ value: 'debut 1500', position: 'insideBottomLeft',
-                                        fontSize: 10, fill: 'var(--faint)' }} />
+                               label={{ value: 'DEBUT 1500', position: 'insideBottomLeft',
+                                        fontSize: 10, fill: 'var(--text-dim)' }} />
                 <Tooltip content={<TrajectoryTooltip />} />
-                <Area dataKey="band" stroke="none" fill="var(--accent)" fillOpacity={0.14}
+                <Area dataKey="band" stroke="none" fill="var(--red)" fillOpacity={0.13}
                       isAnimationActive={false} />
-                <Line dataKey="rating" stroke="var(--accent)" strokeWidth={2} dot={false}
+                <Line dataKey="rating" stroke="var(--red)" strokeWidth={2.5} dot={false}
                       isAnimationActive={false} />
-                <Scatter dataKey="win" fill="var(--win)" isAnimationActive={false} />
-                <Scatter dataKey="loss" fill="var(--loss)" isAnimationActive={false} />
-                <Scatter dataKey="other" fill="var(--faint)" isAnimationActive={false} />
+                <Scatter dataKey="win" shape={<WinDot />} isAnimationActive={false} />
+                <Scatter dataKey="loss" shape={<LossDot />} isAnimationActive={false} />
+                <Scatter dataKey="other" shape={<OtherDot />} isAnimationActive={false} />
               </ComposedChart>
             </ResponsiveContainer>
           </div>
           <p className="footnote">
             The shaded band is the 95% rating interval. It widens after a layoff
-            and narrows with frequent bouts, so a rating that looks flat may
-            still be getting more or less certain. Green points are wins, red
-            losses, grey draws and no contests.
+            and narrows with frequent bouts, so a flat rating may still be getting
+            more or less certain. Solid markers are wins, hollow rings losses.
           </p>
         </>
       )}
