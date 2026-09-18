@@ -3,6 +3,7 @@ from src.scraper.bouts import scrape_bout_urls, scrape_bout_details, scrape_bout
 from src.scraper.fighters import scrape_fighter_profile
 from src.db.insert import insert_fighter, insert_bout, insert_bout_stats, fighter_exists
 from src.db.connection import get_connection
+from src.db.events import completed_urls, record_event
 from playwright.sync_api import sync_playwright
 from datetime import datetime
 import os
@@ -13,31 +14,19 @@ def parse_date(date_str):
         return datetime.strptime(date_str.strip(), "%B %d, %Y").date()
     except (ValueError, AttributeError):
         return None
-PROGRESS_LOG = "progress.log"
 FAILED_BOUTS_LOG = "logs/failed_bouts.log"
-
-def load_progress():
-    try:
-        with open(PROGRESS_LOG, "r") as f:
-            return set(line.strip() for line in f.readlines())
-    except FileNotFoundError:
-        return set()
-
-def log_progress(event_url):
-    with open(PROGRESS_LOG, "a") as f:
-        f.write(event_url + "\n")
 
 
 def log_failed_bout(event_name, bout_url, error):
-    """Record an unscrapeable bout. Its event is left uncheckpointed so the next
-    run retries, rather than silently dropping the bout forever."""
+    """Record an unscrapeable bout. Its event is marked partial so the next run
+    retries it, rather than silently dropping the bout forever."""
     os.makedirs(os.path.dirname(FAILED_BOUTS_LOG), exist_ok=True)
     with open(FAILED_BOUTS_LOG, "a", encoding="utf-8") as f:
         f.write(f"{datetime.now().isoformat()}\t{event_name}\t{bout_url}\t{error}\n")
 
 
 def run_pipeline(events, page):
-    completed = load_progress()
+    completed = completed_urls()
 
     for event in events:
         if event["url"] in completed:
@@ -127,13 +116,14 @@ def run_pipeline(events, page):
         conn.commit()
         conn.close()
 
+        complete = failed == 0 and success > 0
+        record_event(event["url"], event["name"], event_date, success, complete)
+
         print(f"  → {success} succeeded, {failed} failed")
-        if failed == 0 and success > 0:
-            log_progress(event["url"])
-        elif failed:
-            print(f"  ⚠ {failed} bout(s) failed — event not checkpointed, will retry next run")
-        else:
-            print(f"  ⚠ No bouts scraped — will retry on next run")
+        if failed:
+            print(f"  ⚠ {failed} bout(s) failed — event marked partial, will retry next run")
+        elif not success:
+            print(f"  ⚠ No bouts scraped — event marked partial, will retry next run")
 
 if __name__ == "__main__":
     with sync_playwright() as p:
