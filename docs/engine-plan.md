@@ -54,10 +54,12 @@ Tick each box as it is committed. One step = one commit on this branch.
 - [x] **1. Clean slate** — delete the old duplicate pipeline `src/simulation/`
   and `docs/feature-spec.md`. The engine builds on `src/analytics/`, never on a
   second replay.
-- [ ] **2. Evaluation harness** — `src/engine/harness.py`: expanding-window folds
+- [x] **2. Evaluation harness** — `src/engine/harness.py`: expanding-window folds
   by year (validate 2019 … 2025), log loss / Brier / AUC / calibration, bootstrap
   intervals resampled by fight, baselines (50/50 and Glicko-only). Fixed before
-  any model is fitted.
+  any model is fitted. `balance()` flips odd bout ids to remove the 64%
+  scrape-order A-side win rate before scoring. Provisional baselines: 50/50
+  0.6931; current engineered Glicko 0.6792 [0.6730, 0.6850], AUC 0.589.
 - [ ] **3. Rating layer** — `src/engine/rating.py`: parameterised Glicko-2 replay
   computed **in memory** (never writes the shared `ratings` table), adjustments
   removed. Grid over initial RD × τ × debut rating judged by the harness.
