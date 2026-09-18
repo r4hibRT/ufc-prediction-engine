@@ -37,6 +37,7 @@ probability for every UFC bout, used as the backend for the frontend.
 | Rating updates | Standard Glicko-2 equations, updated per bout; draw = 0.5; no-contest = void |
 | Rating adjustments | Title weight, upset discount, rating cap, era factor **removed** from the rating. Context belongs in the corrections layer |
 | Rating constants | Initial RD and initial volatility chosen by grid on downstream walk-forward log loss (debut rating and τ proved inert). Decay constant c stays 0 (already swept) |
+| Site vs engine rating | Site shows standard Glicko (RD 150, long memory) for historical rankings; the engine replays `rating.TUNED` (RD 400, σ 0.7) in memory for forecasts |
 | Features | Point-in-time only, as A − B differences; noisy per-minute rates shrunk toward the division mean by cage time |
 | Debuts | Included; shrinkage gives debutants the division prior |
 | Feature gate | A feature stays only if it improves walk-forward log loss beyond the noise floor **and** keeps the same coefficient sign in most folds |
@@ -100,8 +101,14 @@ Tick each box as it is committed. One step = one commit on this branch.
   written 2026-09-18, including UFC 331. **Known gap:** the Sunday run
   predicts six days ahead, so late replacements are missed unless a second
   weekly run (e.g. Friday) is scheduled. That is the user's call.
-- [ ] **8. Adopt tuned constants** — update `src/ratings/` so the site's ratings
+- [x] **8. Adopt tuned constants** — update `src/ratings/` so the site's ratings
   are the engine's ratings; merge up to main and `epic/interface`.
+  **Revised by the user:** TUNED is a short-memory forecasting rating. It
+  stretched the peak spread from 312 to 1,105 points and made the all-time board
+  recency-driven (Edwards #3, Miocic #4). So the roles are split: the site's
+  `src/ratings/runner.py` is now standard Glicko-2 at RD 150 / σ 0.06 with the
+  adjustments removed, identical (max diff 0.0) to `rating.replay(Params())`.
+  The engine keeps `rating.TUNED` in memory for forecasts. Merged up.
 - [ ] **9. API** — `/api/predictions` for the frontend.
 
 Rough effort: steps 1–3 a day, 4–5 two days, 6–9 two days, part-time.
@@ -114,8 +121,8 @@ Rough effort: steps 1–3 a day, 4–5 two days, 6–9 two days, part-time.
   it runs the site (port 8420) and the Sunday 12:00 scheduled refresh. **Do not
   develop there.** `E:\Projects\ufc-engine` is on `epic/prediction-engine`: engine
   work only.
-- **Shared database.** Both worktrees hit the same PostgreSQL. The engine must
-  not write `ratings`, `bout_snapshots` or `bouts` until step 8.
+- **Shared database.** Both worktrees hit the same PostgreSQL. The engine never
+  writes `ratings`, `bout_snapshots` or `bouts`; it owns only `predictions`.
 - **Python:** `C:\Users\Hp\anaconda3\python.exe` only (the default Python lacks
   numpy/pandas). Run with `PYTHONPATH` set to the worktree root.
 - `.env` is gitignored and must be copied into a new worktree by hand.
