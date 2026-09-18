@@ -108,6 +108,18 @@ def create_tables():
         ON bout_snapshots (fighter_id, date);
     """)
 
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS events (
+            url VARCHAR(200) PRIMARY KEY,
+            name VARCHAR(200),
+            date DATE,
+            status VARCHAR(10) NOT NULL,
+            bouts_scraped INTEGER,
+            attempts INTEGER NOT NULL DEFAULT 1,
+            scraped_at TIMESTAMP NOT NULL DEFAULT now()
+        );
+    """)
+
     # Additive migrations for databases created before these columns existed.
     cur.execute("ALTER TABLE bouts ADD COLUMN IF NOT EXISTS outcome VARCHAR(10);")
     cur.execute("ALTER TABLE bout_snapshots ADD COLUMN IF NOT EXISTS appearances_before INTEGER;")
