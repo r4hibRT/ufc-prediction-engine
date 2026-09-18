@@ -36,7 +36,7 @@ probability for every UFC bout, used as the backend for the frontend.
 | Selection metric | Walk-forward log loss. Brier, calibration, AUC reported; accuracy never used to select |
 | Rating updates | Standard Glicko-2 equations, updated per bout; draw = 0.5; no-contest = void |
 | Rating adjustments | Title weight, upset discount, rating cap, era factor **removed** from the rating. Context belongs in the corrections layer |
-| Rating constants | Initial RD, τ, debut rating chosen by a small grid on downstream walk-forward log loss. Decay constant c stays 0 (already swept) |
+| Rating constants | Initial RD and initial volatility chosen by grid on downstream walk-forward log loss (debut rating and τ proved inert). Decay constant c stays 0 (already swept) |
 | Features | Point-in-time only, as A − B differences; noisy per-minute rates shrunk toward the division mean by cage time |
 | Debuts | Included; shrinkage gives debutants the division prior |
 | Feature gate | A feature stays only if it improves walk-forward log loss beyond the noise floor **and** keeps the same coefficient sign in most folds |
@@ -60,9 +60,14 @@ Tick each box as it is committed. One step = one commit on this branch.
   any model is fitted. `balance()` flips odd bout ids to remove the 64%
   scrape-order A-side win rate before scoring. Provisional baselines: 50/50
   0.6931; current engineered Glicko 0.6792 [0.6730, 0.6850], AUC 0.589.
-- [ ] **3. Rating layer** — `src/engine/rating.py`: parameterised Glicko-2 replay
+- [x] **3. Rating layer** — `src/engine/rating.py`: parameterised Glicko-2 replay
   computed **in memory** (never writes the shared `ratings` table), adjustments
   removed. Grid over initial RD × τ × debut rating judged by the harness.
+  Debut rating only translates the scale and τ has no effect with one bout per
+  update, so the grid became initial RD × initial volatility. `TUNED` = RD 400,
+  volatility 0.7 (bracketed on both sides). Provisional: recalibrated log loss
+  0.6763 vs 0.6804 standard constants (7/7 years better, CI excludes 0) and
+  0.6792 site ratings (7/7 years, CI just crosses 0); β₀ ≈ 0.48 in every fold.
 - [ ] **4. Feature builder** — `src/engine/features.py`: per-bout difference rows
   from pre-bout state (extend the analytics replay), shrinkage, debuts included,
   plus a truncation test proving no lookahead.
