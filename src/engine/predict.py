@@ -25,7 +25,7 @@ from src.engine import artifact as engine_artifact
 from src.engine import features
 from src.engine.rating import Params
 
-COLUMNS = ["bout_url", "event_url", "event_name", "event_date", "weight_class",
+COLUMNS = ["bout_url", "event_url", "event_name", "event_date", "weight_class", "card_position",
            "fighter_a_url", "fighter_a_name", "fighter_b_url", "fighter_b_name",
            "p_a", "glicko_p", "contributions", "model_version"]
 
@@ -46,9 +46,9 @@ def fetch_cards(page):
     rows = []
     for event in scrape_upcoming_events(page):
         event_date = parse_date(event["date"])
-        for bout in scrape_upcoming_card(event["url"], page):
+        for position, bout in enumerate(scrape_upcoming_card(event["url"], page), 1):
             rows.append({**bout, "event_url": event["url"], "event_name": event["name"],
-                         "event_date": event_date})
+                         "event_date": event_date, "card_position": position})
     return pd.DataFrame(rows)
 
 
@@ -92,12 +92,15 @@ def forecast(cards, ids, profiles, art):
 
 
 def write(preds, conn):
-    """Upsert future bouts only; a row on or after its fight day is never rewritten."""
+    """Upsert future bouts only; a row on or after its fight day is never rewritten.
+    Future rows for fights no longer listed are dropped, since none is frozen yet."""
     future = preds[pd.to_datetime(preds["event_date"]).dt.date > date.today()]
     if future.empty:
         return 0
     updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in COLUMNS[1:])
     cur = conn.cursor()
+    cur.execute("DELETE FROM predictions WHERE event_date > CURRENT_DATE AND bout_url <> ALL(%s)",
+                (list(future["bout_url"]),))
     execute_values(cur, f"""
         INSERT INTO predictions ({", ".join(COLUMNS)}) VALUES %s
         ON CONFLICT (bout_url) DO UPDATE SET {updates}, predicted_at = now()

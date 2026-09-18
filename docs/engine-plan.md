@@ -109,7 +109,18 @@ Tick each box as it is committed. One step = one commit on this branch.
   `src/ratings/runner.py` is now standard Glicko-2 at RD 150 / σ 0.06 with the
   adjustments removed, identical (max diff 0.0) to `rating.replay(Params())`.
   The engine keeps `rating.TUNED` in memory for forecasts. Merged up.
-- [ ] **9. API** — `/api/predictions` for the frontend.
+- [x] **9. API** — `/api/predictions` for the frontend. `src/api/predictions.py`:
+  `/api/predictions` lists upcoming cards (main event first, `card_position`),
+  each bout with `p_a`/`p_b` and an `explanation` of log-odds by block (rating,
+  age, striking) that sums to the forecast. `/api/predictions/record` gives the
+  scored summary (log loss, Brier, favourite-won rate vs coin flip), the model's
+  validation metrics, and recent scored bouts. Future rows for fights dropped
+  from a card are deleted on the next run. The ratings card no longer claims
+  the site has no predictions.
+
+**Engine complete.** Next: the frontend (the user's), an optional second weekly
+run before cards, and pushing branches. Retraining is deliberate, never
+automatic: a new artifact date starts a new prospective record.
 
 Rough effort: steps 1–3 a day, 4–5 two days, 6–9 two days, part-time.
 

@@ -129,6 +129,7 @@ def create_tables():
             event_name VARCHAR(200),
             event_date DATE NOT NULL,
             weight_class VARCHAR(50),
+            card_position INTEGER,
             fighter_a_url VARCHAR(200) NOT NULL,
             fighter_a_name VARCHAR(100),
             fighter_b_url VARCHAR(200) NOT NULL,
@@ -149,6 +150,7 @@ def create_tables():
     # Additive migrations for databases created before these columns existed.
     cur.execute("ALTER TABLE bouts ADD COLUMN IF NOT EXISTS outcome VARCHAR(10);")
     cur.execute("ALTER TABLE bout_snapshots ADD COLUMN IF NOT EXISTS appearances_before INTEGER;")
+    cur.execute("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS card_position INTEGER;")
 
     conn.commit()
     cur.close()

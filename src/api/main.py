@@ -1,7 +1,7 @@
 """FastAPI application for the UFC analytics platform.
 
-Read-only. No authentication, no prediction surface -- see
-docs/product-spec.md for why prediction is deferred.
+Read-only, no authentication. Forecasts are served from the prediction
+engine's `predictions` table; see docs/engine-plan.md.
 
 Run:
     uvicorn src.api.main:app --port 8420 --reload
@@ -15,6 +15,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
+from src.api import predictions as pq
 from src.api import queries as q
 from src.automation.health import check as pipeline_health
 from src.db.connection import get_connection
@@ -25,8 +26,8 @@ DIST = PROJECT_ROOT / "frontend" / "dist"
 
 app = FastAPI(
     title="UFC Analytics API",
-    description="Glicko-2 ratings, point-in-time statistics and historical "
-                "analysis over every UFC bout since 1994.",
+    description="Glicko-2 ratings, point-in-time statistics, historical "
+                "analysis and fight forecasts over every UFC bout since 1994.",
     version="0.1.0",
 )
 
@@ -146,31 +147,38 @@ def upsets(limit: int = Query(10, ge=1, le=100)):
 
 @router.get("/ratings-card", tags=["meta"])
 def ratings_card():
-    """How the rating engine works and where it stops working; the collapse in
-    discrimination with experience is why this site shows no predictions."""
+    """How the site's rating and the forecasting engine work, and where they stop."""
     return {
-        "system": "Glicko-2, implemented from scratch",
-        "parameters": {"initial_rating": 1500, "initial_rd": 150,
+        "system": "Glicko-2, implemented from scratch; standard updates, no adjustments",
+        "parameters": {"initial_rating": 1500, "initial_rd": 150, "initial_volatility": 0.06,
                        "tau": 0.5, "rating_period_days": 182.5},
-        "discrimination_by_experience": [
-            {"less_experienced_fighter_had": "<=2 prior UFC bouts", "n": 114, "auc": 0.643},
-            {"less_experienced_fighter_had": "3-5", "n": 737, "auc": 0.614},
-            {"less_experienced_fighter_had": "6-9", "n": 1013, "auc": 0.562},
-            {"less_experienced_fighter_had": "10+", "n": 1639, "auc": 0.528},
-        ],
-        "note": "Among two established fighters the rating is close to a coin "
-                "flip. That is UFC matchmaking engineering competitive parity, "
-                "not a defect in the engine -- and it is why this site reports "
-                "history rather than predictions.",
+        "forecasts": "A separate engine: a shorter-memory Glicko rating recalibrated "
+                     "and corrected for age and striking rates, fitted by logistic "
+                     "regression. See /api/predictions/record for how it has scored.",
         "known_limitations": [
-            "Mean ratings differ by about 43 points between divisions, so "
-            "pound-for-pound comparison is not strictly like-for-like.",
+            "Mean ratings differ between divisions, so pound-for-pound "
+            "comparison is not strictly like-for-like.",
             "Ratings use UFC bouts only; every debutant starts at 1500 "
             "regardless of what they achieved elsewhere.",
             "Margin of victory is ignored: a split decision and a ten-second "
             "knockout move the rating identically.",
         ],
     }
+
+
+# --- predictions ------------------------------------------------------------
+
+@router.get("/predictions", tags=["predictions"])
+def predictions():
+    """Forecasts for every listed upcoming card, main event first, each with the
+    log-odds contribution of the rating and of each correction."""
+    return pq.get_upcoming()
+
+
+@router.get("/predictions/record", tags=["predictions"])
+def prediction_record(limit: int = Query(50, ge=1, le=500)):
+    """How frozen forecasts scored once fought, with the model's validation metrics."""
+    return pq.get_record(limit=limit)
 
 
 app.include_router(router)
