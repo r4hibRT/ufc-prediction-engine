@@ -76,9 +76,14 @@ Tick each box as it is committed. One step = one commit on this branch.
   test at 2020-01-01 passes exactly. `training_frame()` gives balanced decided
   bouts. 2026 bouts are outside the validation folds: keep them untouched as a
   sanity holdout at freeze.
-- [ ] **5. Model** — `src/engine/model.py`: no-intercept logistic regression;
+- [x] **5. Model** — `src/engine/model.py`: no-intercept logistic regression;
   forward block selection through the feature gate; calibration check; freeze
-  the configuration.
+  the configuration. Gate = paired bootstrap CI of the log-loss gain below 0 and
+  every coefficient one sign in ≥ 6/7 folds. **Frozen: rating + age + striking,
+  C = 0.01** (flat from 0.01 to 1). Provisional walk-forward 2019–2025: log loss
+  0.6515 vs 0.6763 rating only (−0.0248 [−0.0312, −0.0185], 7/7 years), AUC
+  0.661, ECE 0.015, deciles within ~0.04. 2026 holdout (n=386, looked at once):
+  0.6286 vs 0.6822 rating only. Nearest rejected block: debut (CI crosses 0).
 - [ ] **6. Artifact** — persist fitted model + scaler + feature list + rating
   constants + metrics sidecar to `models/` (versioned by date).
 - [ ] **7. Inference and record** — current-state features for upcoming bouts,

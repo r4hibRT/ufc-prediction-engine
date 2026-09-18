@@ -191,7 +191,8 @@ def build(until=None, params=rating.TUNED):
     a, b = a.set_index("bout_id"), b.set_index("bout_id").loc[a["bout_id"]]
 
     df = a[["date", "fighter_a_id", "fighter_b_id", "winner_id", "outcome", "weight_class"]].copy()
-    df[FEATURES] = a[FEATURES].to_numpy() - b[FEATURES].to_numpy()
+    # Only height and reach can be missing (a few early fighters): no edge either way.
+    df[FEATURES] = np.nan_to_num(a[FEATURES].to_numpy() - b[FEATURES].to_numpy())
     df = df.reset_index().merge(ratings[["bout_id", "glicko_p"]], on="bout_id")
     df["rating"] = rating.logit(df["glicko_p"].to_numpy())
     decided = (df["outcome"] == "win") & df["winner_id"].notna()
