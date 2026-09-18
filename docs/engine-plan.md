@@ -68,9 +68,14 @@ Tick each box as it is committed. One step = one commit on this branch.
   volatility 0.7 (bracketed on both sides). Provisional: recalibrated log loss
   0.6763 vs 0.6804 standard constants (7/7 years better, CI excludes 0) and
   0.6792 site ratings (7/7 years, CI just crosses 0); β₀ ≈ 0.48 in every fold.
-- [ ] **4. Feature builder** — `src/engine/features.py`: per-bout difference rows
+- [x] **4. Feature builder** — `src/engine/features.py`: per-bout difference rows
   from pre-bout state (extend the analytics replay), shrinkage, debuts included,
-  plus a truncation test proving no lookahead.
+  plus a truncation test proving no lookahead. 23 features in 12 blocks
+  (`BLOCKS`); rates shrunk toward a running division prior (as-of merge on
+  earlier dates); ratings and opponent strength from `rating.TUNED`. Truncation
+  test at 2020-01-01 passes exactly. `training_frame()` gives balanced decided
+  bouts. 2026 bouts are outside the validation folds: keep them untouched as a
+  sanity holdout at freeze.
 - [ ] **5. Model** — `src/engine/model.py`: no-intercept logistic regression;
   forward block selection through the feature gate; calibration check; freeze
   the configuration.
