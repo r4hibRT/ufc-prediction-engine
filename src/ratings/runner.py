@@ -1,5 +1,11 @@
-import math
-from bisect import bisect_left
+"""Recompute the site's Glicko-2 ratings from scratch into the ratings table.
+
+Standard Glicko-2 updated per bout: a win scores 1, a draw 0.5, and a no-contest
+or overturned result is void. The earlier title weight, upset discount, rating
+cap and era factor were removed so the rating measures results alone. The site
+keeps long-memory constants for historical rankings; the prediction engine
+replays its own tuned rating in memory (src/engine/rating.py).
+"""
 
 from src.db.connection import get_connection
 from src.ratings.glicko2 import (
@@ -7,92 +13,22 @@ from src.ratings.glicko2 import (
     RATING_PERIOD_DAYS,
 )
 
-SKIP_METHODS = {'Overturned', 'Other'}
-MAX_RATING_CHANGE = 100
-UPSET_THRESHOLD = 0.25
-UPSET_DISCOUNT = 0.85
-TITLE_FIGHT_WEIGHT = 1.1
-BASELINE_FINISH_RATE = 0.502
-
-
 def get_bouts_chronological(cur):
     cur.execute("""
-        SELECT id, date, fighter_a_id, fighter_b_id, winner_id, method, is_title_fight, outcome
+        SELECT id, date, fighter_a_id, fighter_b_id, winner_id, method, outcome
         FROM bouts
         ORDER BY date ASC, id ASC
     """)
     return cur.fetchall()
 
 
-def compute_rolling_finish_rates(bouts):
-    """Trailing three-year finish rate per bout, via prefix sums and two binary
-    searches rather than rescanning history for every bout."""
-    decided = sorted(
-        (b[1], 1 if b[5] in ('KO/TKO', 'Submission') else 0)
-        for b in bouts
-        if b[4] is not None
-    )
-    dates = [d for d, _ in decided]
-
-    prefix = [0]
-    for _, is_finish in decided:
-        prefix.append(prefix[-1] + is_finish)
-
-    finish_rates = {}
-    for bout in bouts:
-        bout_id = bout[0]
-        bout_date = bout[1]
-        try:
-            window_start = bout_date.replace(year=bout_date.year - 3)
-        except ValueError:
-            window_start = bout_date.replace(year=bout_date.year - 3, day=28)
-
-        lo = bisect_left(dates, window_start)
-        hi = bisect_left(dates, bout_date)
-        count = hi - lo
-
-        if count >= 30:
-            finish_rates[bout_id] = (prefix[hi] - prefix[lo]) / count
-        else:
-            finish_rates[bout_id] = BASELINE_FINISH_RATE
-
-    return finish_rates
-
-
-def era_adjust_outcome(outcome, bout_id, finish_rates):
-    if outcome == 0.5:
+def determine_outcome(winner_id, fighter_a_id, method, outcome):
+    """Fighter A's score: 1, 0.5 or 0; None leaves both ratings untouched."""
+    if outcome == 'win' and winner_id is not None:
+        return 1.0 if winner_id == fighter_a_id else 0.0
+    if outcome == 'draw' and method != 'Overturned':
         return 0.5
-    era_rate = finish_rates.get(bout_id, BASELINE_FINISH_RATE)
-    adjustment = BASELINE_FINISH_RATE / era_rate
-    adjustment = min(adjustment, 1.0)
-    return 0.5 + (outcome - 0.5) * adjustment
-
-
-
-
-def determine_outcome(winner_id, fighter_a_id, method, is_title_fight, expected_a, outcome=None):
-    if method in SKIP_METHODS:
-        return None
-    if winner_id is None:
-        # A draw is a real result worth half a win; a no contest never
-        # happened and must not move either rating.
-        if outcome == 'draw':
-            return 0.5
-        if outcome == 'nc':
-            return None
-        # Rows predating the outcome column: fall back to the old guess.
-        return 0.5 if method == 'Decision' else None
-
-    # Score the winner, then map to A's perspective; scoring from A's side gave
-    # the title weighting only to fighter A, who wins 342 of 462 on scrape order.
-    winner_is_a = (winner_id == fighter_a_id)
-    expected_winner = expected_a if winner_is_a else 1.0 - expected_a
-
-    score = TITLE_FIGHT_WEIGHT if is_title_fight else 1.0
-    if expected_winner < UPSET_THRESHOLD:
-        score = score * UPSET_DISCOUNT
-
-    return score if winner_is_a else 1.0 - score
+    return None
 
 
 def elapsed_periods(previous_date, bout_date):
@@ -121,15 +57,12 @@ def run_ratings():
     bouts = get_bouts_chronological(cur)
     print(f"Processing {len(bouts)} bouts...")
 
-    finish_rates = compute_rolling_finish_rates(bouts)
-    print(f"Rolling 3-year finish rates computed for {len(finish_rates)} bouts")
-
     fighters = {}
     last_bout_date = {}
     rating_rows = []
 
     for bout in bouts:
-        bout_id, date_, fighter_a_id, fighter_b_id, winner_id, method, is_title_fight, bout_outcome = bout
+        bout_id, date_, fighter_a_id, fighter_b_id, winner_id, method, bout_outcome = bout
 
         if fighter_a_id not in fighters:
             fighters[fighter_a_id] = Glicko2Fighter()
@@ -148,18 +81,11 @@ def run_ratings():
         expected_a = _expected_score(mu_a, mu_b, phi_b)
         expected_b = 1 - expected_a
 
-        outcome = determine_outcome(winner_id, fighter_a_id, method, is_title_fight, expected_a, bout_outcome)
-
+        outcome = determine_outcome(winner_id, fighter_a_id, method, bout_outcome)
         if outcome is None:
             continue
 
-        # Apply era adjustment
-        outcome = era_adjust_outcome(outcome, bout_id, finish_rates)
-
         new_a, new_b = update_ratings(fighter_a, fighter_b, outcome, periods_a, periods_b)
-
-        new_a = apply_cap(fighter_a.rating, new_a)
-        new_b = apply_cap(fighter_b.rating, new_b)
 
         fighters[fighter_a_id] = new_a
         fighters[fighter_b_id] = new_b
