@@ -68,6 +68,27 @@ def scrape_event_results(event_url, page):
     return results
 
 
+def scrape_upcoming_card(event_url, page):
+    """Matchups on a scheduled card: fight URL, both fighters and the division."""
+    page.goto(event_url, wait_until="networkidle", timeout=60000)
+    soup = BeautifulSoup(page.content(), "html.parser")
+
+    card = []
+    for row in soup.select("tr.b-fight-details__table-row"):
+        bout_url = row.get("data-link")
+        fighters = [a for a in row.select("a") if "fighter-details" in (a.get("href") or "")]
+        cells = row.select("td")
+        if not bout_url or len(fighters) < 2 or len(cells) < 7:
+            continue
+        card.append({
+            "bout_url": bout_url,
+            "fighter_a_url": fighters[0]["href"], "fighter_a_name": fighters[0].get_text(strip=True),
+            "fighter_b_url": fighters[1]["href"], "fighter_b_name": fighters[1].get_text(strip=True),
+            "weight_class": parse_weight_class(cells[6].get_text(" ", strip=True)),
+        })
+    return card
+
+
 def scrape_bout_details(bout_url, page):
     page.goto(bout_url, wait_until="networkidle", timeout=60000)
     html = page.content()

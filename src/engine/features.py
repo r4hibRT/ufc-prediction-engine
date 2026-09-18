@@ -173,14 +173,19 @@ def fighter_features(snaps, fighters, priors, opp):
     return out
 
 
-def build(until=None, params=rating.TUNED):
-    """One row per bout before `until`: identifiers, Glicko probability, differences."""
+def build(until=None, params=rating.TUNED, extra=None, extra_fighters=None):
+    """One row per bout before `until`: identifiers, Glicko probability, differences.
+    `extra` appends upcoming bouts; `extra_fighters` profiles debutants not yet stored."""
     bouts, fighters, stats = _load()
     if until is not None:
         until = pd.Timestamp(until).date()
         bouts = bouts[bouts["date"] < until].reset_index(drop=True)
+    if extra is not None:
+        bouts = pd.concat([bouts, extra[bouts.columns]], ignore_index=True)
+    if extra_fighters is not None and len(extra_fighters):
+        fighters = pd.concat([fighters, extra_fighters[fighters.columns]], ignore_index=True)
     ratings = rating.replay(bouts, params)
-    snaps = pd.DataFrame(analytics_replay(until))
+    snaps = pd.DataFrame(analytics_replay(until, extra))
     snaps = snaps[snaps["bout_id"].isin(bouts["bout_id"])]
 
     levels = fighter_features(snaps, fighters, division_priors(bouts, stats),

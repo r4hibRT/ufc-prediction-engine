@@ -89,9 +89,17 @@ Tick each box as it is committed. One step = one commit on this branch.
   linear, so `src/engine/artifact.py` stores plain JSON (per-unit coefficients,
   constants, validation metrics) instead of a pickle; `predict()` is a dot
   product and matches sklearn to 1e-16. First artifact: `models/engine-2026-09-18.json`.
-- [ ] **7. Inference and record** — current-state features for upcoming bouts,
+- [x] **7. Inference and record** — current-state features for upcoming bouts,
   a `predictions` table written **before** each card and scored after, both
-  wired into the weekly refresh.
+  wired into the weekly refresh. `src/engine/predict.py`: upcoming cards from
+  ufcstats (`scrape_upcoming_card`), debutant profiles scraped but not stored,
+  upcoming bouts appended to the replay as void rows. Rows are rewritable until
+  fight day, then frozen; scoring matches by fighter URLs in either corner order
+  and marks vanished fights `not_held` (tested in a rolled-back transaction).
+  Refresh step `predictions` (`--skip-predictions`). First 62 predictions
+  written 2026-09-18, including UFC 331. **Known gap:** the Sunday run
+  predicts six days ahead, so late replacements are missed unless a second
+  weekly run (e.g. Friday) is scheduled. That is the user's call.
 - [ ] **8. Adopt tuned constants** — update `src/ratings/` so the site's ratings
   are the engine's ratings; merge up to main and `epic/interface`.
 - [ ] **9. API** — `/api/predictions` for the frontend.

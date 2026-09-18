@@ -33,15 +33,18 @@ def load_frames(conn):
     return bouts, ratings, stats
 
 
-def replay(until=None):
+def replay(until=None, extra=None):
     """One snapshot per fighter per bout. `until` truncates history so the
-    point-in-time property stays testable against a full-history run."""
+    point-in-time property stays testable against a full-history run. `extra`
+    appends bouts with outcome "upcoming": snapshotted, never applied."""
     conn = get_connection()
     bouts, ratings, stats = load_frames(conn)
     conn.close()
 
     if until is not None:
         bouts = bouts[bouts["date"] < until].copy()
+    if extra is not None:
+        bouts = pd.concat([bouts, extra[bouts.columns]], ignore_index=True)
 
     rating_lookup = ratings.set_index(["fighter_id", "bout_id"])[
         ["rating", "rd", "volatility"]].to_dict("index")
@@ -64,6 +67,9 @@ def replay(until=None):
                 "bout_id": bout.bout_id, "fighter_id": fid,
                 "date": bout.date, **st.snapshot(bout.date),
             })
+
+        if bout.outcome == "upcoming":
+            continue
 
         prior_a, prior_b = st_a.rating, st_b.rating
         seconds = fight_seconds(bout.round, bout.time)
