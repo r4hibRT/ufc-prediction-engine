@@ -10,6 +10,8 @@ Steps:
   2. recompute Glicko-2 ratings from scratch (~6s over ~8.8k bouts, cheap
      enough that incremental rating updates are not worth the complexity)
   3. rewrite per-bout snapshots for the point-in-time statistics
+  4. score last card's predictions, then forecast every listed upcoming card
+     with the frozen engine artifact (see src/engine/predict.py)
 
 Usage:
     python -m src.automation.refresh
@@ -158,6 +160,12 @@ def step_snapshots(dry_run=False):
     return write_snapshots(verbose=True)
 
 
+def step_predictions(dry_run=False):
+    from src.engine.predict import run
+
+    return run(dry_run=dry_run, log=log)
+
+
 def report_health():
     """Record pipeline health after every run; a broken check must not mask the run."""
     try:
@@ -174,15 +182,18 @@ STEPS = [
     ("scrape", step_scrape),
     ("ratings", step_ratings),
     ("snapshots", step_snapshots),
+    ("predictions", step_predictions),
 ]
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Refresh UFC data, ratings and snapshots.")
+    parser = argparse.ArgumentParser(description="Refresh UFC data, ratings, snapshots and predictions.")
     parser.add_argument("--skip-scrape", action="store_true", help="reuse the DB as-is")
     parser.add_argument("--skip-ratings", action="store_true", help="leave ratings untouched")
     parser.add_argument("--skip-snapshots", action="store_true",
                         help="do not rewrite bout_snapshots")
+    parser.add_argument("--skip-predictions", action="store_true",
+                        help="do not score or write predictions")
     parser.add_argument("--dry-run", action="store_true",
                         help="report what would happen without writing anything")
     args = parser.parse_args()
@@ -201,6 +212,7 @@ def main():
         "scrape": args.skip_scrape,
         "ratings": args.skip_ratings,
         "snapshots": args.skip_snapshots,
+        "predictions": args.skip_predictions,
     }
 
     results = {}

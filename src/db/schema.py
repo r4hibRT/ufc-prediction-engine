@@ -120,6 +120,32 @@ def create_tables():
         );
     """)
 
+    # The engine's prospective record: written before a card, frozen on fight
+    # day, scored once the result is scraped. Keyed by ufcstats fight URL.
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS predictions (
+            bout_url VARCHAR(200) PRIMARY KEY,
+            event_url VARCHAR(200) NOT NULL,
+            event_name VARCHAR(200),
+            event_date DATE NOT NULL,
+            weight_class VARCHAR(50),
+            fighter_a_url VARCHAR(200) NOT NULL,
+            fighter_a_name VARCHAR(100),
+            fighter_b_url VARCHAR(200) NOT NULL,
+            fighter_b_name VARCHAR(100),
+            p_a DOUBLE PRECISION NOT NULL,
+            glicko_p DOUBLE PRECISION,
+            contributions JSONB,
+            model_version VARCHAR(20) NOT NULL,
+            predicted_at TIMESTAMP NOT NULL DEFAULT now(),
+            bout_id INTEGER REFERENCES bouts(id),
+            result VARCHAR(10),
+            a_won BOOLEAN,
+            log_loss DOUBLE PRECISION,
+            scored_at TIMESTAMP
+        );
+    """)
+
     # Additive migrations for databases created before these columns existed.
     cur.execute("ALTER TABLE bouts ADD COLUMN IF NOT EXISTS outcome VARCHAR(10);")
     cur.execute("ALTER TABLE bout_snapshots ADD COLUMN IF NOT EXISTS appearances_before INTEGER;")

@@ -5,12 +5,9 @@ INITIAL_RATING = 1500
 INITIAL_RD = 150
 INITIAL_VOLATILITY = 0.06
 
-# One rating period in days. Six months matches UFC cadence.
+# One rating period in days. Six months matches UFC cadence and is what turns
+# a layoff into growing uncertainty.
 RATING_PERIOD_DAYS = 182.5
-
-# Staleness per period, in rating points. Swept 0-80 against held-out fights:
-# every increase degraded Brier, AUC and accuracy monotonically, so it stays 0.
-RD_DECAY_C = 0.0
 
 
 class Glicko2Fighter:
@@ -59,9 +56,8 @@ def _compute_delta(mu, opponents, outcomes, v):
     return v * delta
 
 
-def _compute_new_volatility(phi, volatility, v, delta):
+def _compute_new_volatility(phi, volatility, v, delta, tau=TAU):
     a = math.log(volatility ** 2)
-    tau = TAU
 
     def f(x):
         ex = math.exp(x)
@@ -94,7 +90,8 @@ def _compute_new_volatility(phi, volatility, v, delta):
     return math.exp(A / 2)
 
 
-def update_ratings(fighter, opponent, outcome, periods_fighter=1.0, periods_opponent=1.0):
+def update_ratings(fighter, opponent, outcome, periods_fighter=1.0, periods_opponent=1.0,
+                   tau=TAU, max_rd=INITIAL_RD):
     """Update both ratings for one bout; outcome is 1.0/0.5/0.0 for the first
     fighter. periods_* are rating periods since each last competed."""
     results = []
@@ -111,14 +108,12 @@ def update_ratings(fighter, opponent, outcome, periods_fighter=1.0, periods_oppo
 
         v = _compute_v(mu, opponents)
         delta = _compute_delta(mu, opponents, outcomes, v)
-        new_volatility = _compute_new_volatility(phi, f.volatility, v, delta)
+        new_volatility = _compute_new_volatility(phi, f.volatility, v, delta, tau)
 
-        # Uncertainty grows with elapsed time, clamped so a long layoff cannot
-        # exceed "completely unknown".
-        elapsed = max(periods, 0.0)
-        drift = new_volatility ** 2 + (RD_DECAY_C / 173.7178) ** 2
-        phi_star = math.sqrt(phi ** 2 + drift * elapsed)
-        phi_star = min(phi_star, INITIAL_RD / 173.7178)
+        # Uncertainty grows with time, clamped so a long layoff cannot exceed
+        # "completely unknown".
+        phi_star = math.sqrt(phi ** 2 + new_volatility ** 2 * max(periods, 0.0))
+        phi_star = min(phi_star, max_rd / 173.7178)
 
         new_phi = 1 / math.sqrt(1 / phi_star ** 2 + 1 / v)
         new_mu = mu + new_phi ** 2 * sum(
