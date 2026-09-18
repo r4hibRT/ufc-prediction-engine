@@ -16,6 +16,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from src.api import queries as q
+from src.automation.health import check as pipeline_health
 from src.db.connection import get_connection
 from src.ratings import queries as rq
 
@@ -44,7 +45,8 @@ app.add_middleware(
 
 @router.get("/health", tags=["meta"])
 def health():
-    """Liveness plus a summary of what the database currently holds."""
+    """Liveness, what the database holds, and pipeline health checked live, so a
+    weekly job that never ran still surfaces as stale."""
     conn = get_connection()
     cur = conn.cursor()
     counts = {}
@@ -56,7 +58,8 @@ def health():
     cur.close()
     conn.close()
     return {"status": "ok", "counts": counts,
-            "coverage": {"first_bout": first, "last_bout": last}}
+            "coverage": {"first_bout": first, "last_bout": last},
+            "pipeline": pipeline_health()}
 
 
 # --- rankings ---------------------------------------------------------------

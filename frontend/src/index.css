@@ -399,3 +399,26 @@ a.fighter-name:hover { color: var(--red); }
 .best-win span { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 .titles { font-family: var(--cond); font-size: 15px; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .titles span { color: var(--text-dim); font-size: 13px; }
+
+/* ---------- health banner ---------- */
+
+.health-banner { background: var(--surface); border-bottom: 1px solid var(--line); border-left: 4px solid var(--red); }
+.health-inner {
+  max-width: var(--content);
+  margin: 0 auto;
+  padding: 12px var(--gutter);
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  flex-wrap: wrap;
+}
+.health-label {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--red);
+  white-space: nowrap;
+}
+.health-banner ul { margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--text-muted); }

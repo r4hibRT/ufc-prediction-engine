@@ -4,6 +4,7 @@ import Fighters from './pages/Fighters';
 import Fighter from './pages/Fighter';
 import Placeholder from './pages/Placeholder';
 import ThemeToggle from './ThemeToggle';
+import HealthBanner from './HealthBanner';
 
 const TABS = [
   { to: '/rankings', label: 'Rankings' },
@@ -36,6 +37,7 @@ export default function App() {
           <ThemeToggle />
         </div>
       </header>
+      <HealthBanner />
 
       <main>
         <Routes>
