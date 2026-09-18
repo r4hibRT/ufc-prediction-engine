@@ -51,7 +51,7 @@ Tick each box as it is committed. One step = one commit on this branch.
 
 - [x] **0. Setup** — worktree `E:\Projects\ufc-engine` on `epic/prediction-engine`,
   synced with main, this plan written.
-- [ ] **1. Clean slate** — delete the old duplicate pipeline `src/simulation/`
+- [x] **1. Clean slate** — delete the old duplicate pipeline `src/simulation/`
   and `docs/feature-spec.md`. The engine builds on `src/analytics/`, never on a
   second replay.
 - [ ] **2. Evaluation harness** — `src/engine/harness.py`: expanding-window folds
