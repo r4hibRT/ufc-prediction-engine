@@ -137,6 +137,7 @@ def create_tables():
             p_a DOUBLE PRECISION NOT NULL,
             glicko_p DOUBLE PRECISION,
             contributions JSONB,
+            tape JSONB,
             model_version VARCHAR(20) NOT NULL,
             predicted_at TIMESTAMP NOT NULL DEFAULT now(),
             bout_id INTEGER REFERENCES bouts(id),
@@ -151,6 +152,7 @@ def create_tables():
     cur.execute("ALTER TABLE bouts ADD COLUMN IF NOT EXISTS outcome VARCHAR(10);")
     cur.execute("ALTER TABLE bout_snapshots ADD COLUMN IF NOT EXISTS appearances_before INTEGER;")
     cur.execute("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS card_position INTEGER;")
+    cur.execute("ALTER TABLE predictions ADD COLUMN IF NOT EXISTS tape JSONB;")
 
     conn.commit()
     cur.close()

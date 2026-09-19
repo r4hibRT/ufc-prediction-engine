@@ -1,7 +1,9 @@
 """Unattended refresh of the whole pipeline.
 
-Designed to be run by a scheduler once a week, after the weekend's card has
-settled. Every step is idempotent, so a re-run after a partial failure is safe.
+Scheduled twice a week (Sydney time): Monday 12:00, once the weekend's cards
+are on ufcstats, to score them and forecast the next ones; Saturday 08:00
+(Friday evening in New York), after weigh-ins, to catch late changes. Every
+step is idempotent, so a re-run after a partial failure is safe.
 
 Steps:
   1. scrape newly completed events (incremental -- the events table gates what

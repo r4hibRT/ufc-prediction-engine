@@ -98,9 +98,10 @@ Tick each box as it is committed. One step = one commit on this branch.
   fight day, then frozen; scoring matches by fighter URLs in either corner order
   and marks vanished fights `not_held` (tested in a rolled-back transaction).
   Refresh step `predictions` (`--skip-predictions`). First 62 predictions
-  written 2026-09-18, including UFC 331. **Known gap:** the Sunday run
-  predicts six days ahead, so late replacements are missed unless a second
-  weekly run (e.g. Friday) is scheduled. That is the user's call.
+  written 2026-09-18, including UFC 331. Schedule (Sydney time): Monday
+  12:00 scores the weekend and publishes the next cards; Saturday 08:00 (Friday
+  evening in New York, after weigh-ins) re-forecasts for late changes. Forecasts
+  freeze on the US Eastern date (`predict.fight_calendar_today`).
 - [x] **8. Adopt tuned constants** — update `src/ratings/` so the site's ratings
   are the engine's ratings; merge up to main and `epic/interface`.
   **Revised by the user:** TUNED is a short-memory forecasting rating. It

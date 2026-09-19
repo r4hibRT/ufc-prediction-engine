@@ -14,7 +14,8 @@ Run:
 
 import json
 import math
-from datetime import date
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
@@ -25,9 +26,17 @@ from src.engine import artifact as engine_artifact
 from src.engine import features
 from src.engine.rating import Params
 
+# Card dates are US calendar dates; the machine runs in Sydney, a day ahead.
+FIGHT_TZ = ZoneInfo("America/New_York")
+
 COLUMNS = ["bout_url", "event_url", "event_name", "event_date", "weight_class", "card_position",
            "fighter_a_url", "fighter_a_name", "fighter_b_url", "fighter_b_name",
-           "p_a", "glicko_p", "contributions", "model_version"]
+           "p_a", "glicko_p", "contributions", "tape", "model_version"]
+
+
+def fight_calendar_today():
+    """Today's date where cards are dated, which decides when a forecast freezes."""
+    return datetime.now(FIGHT_TZ).date()
 
 
 def check_compatible(art):
@@ -88,24 +97,44 @@ def forecast(cards, ids, profiles, art):
     out["contributions"] = [json.dumps(engine_artifact.contributions(art, r).round(4).to_dict())
                             for _, r in rows.iterrows()]
     out["model_version"] = art["version"]
+    out["tape"] = tapes(out, ids, profiles)
     return out
+
+
+def tapes(cards, ids, profiles):
+    """Tale of the tape for each bout as of its card date, as JSON."""
+    from src.api.tape import bout_tape
+
+    by_id = {r["fighter_id"]: r for r in profiles.to_dict("records")}
+    conn = get_connection()
+    try:
+        return [json.dumps(bout_tape(ids[r.fighter_a_url], r.fighter_a_name, ids[r.fighter_b_url],
+                                     r.fighter_b_name, r.event_date, by_id, conn), default=str)
+                for r in cards.itertuples(index=False)]
+    finally:
+        conn.close()
 
 
 def write(preds, conn):
     """Upsert future bouts only; a row on or after its fight day is never rewritten.
     Future rows for fights no longer listed are dropped, since none is frozen yet."""
-    future = preds[pd.to_datetime(preds["event_date"]).dt.date > date.today()]
+    today = fight_calendar_today()
+    future = preds[pd.to_datetime(preds["event_date"]).dt.date > today]
     if future.empty:
         return 0
     updates = ", ".join(f"{c} = EXCLUDED.{c}" for c in COLUMNS[1:])
     cur = conn.cursor()
-    cur.execute("DELETE FROM predictions WHERE event_date > CURRENT_DATE AND bout_url <> ALL(%s)",
-                (list(future["bout_url"]),))
+    cur.execute("DELETE FROM predictions WHERE event_date > %s AND bout_url <> ALL(%s)",
+                (today, list(future["bout_url"])))
     execute_values(cur, f"""
         INSERT INTO predictions ({", ".join(COLUMNS)}) VALUES %s
         ON CONFLICT (bout_url) DO UPDATE SET {updates}, predicted_at = now()
-        WHERE predictions.event_date > CURRENT_DATE
+        WHERE predictions.event_date > '{today.isoformat()}'::date
     """, [tuple(r) for r in future[COLUMNS].itertuples(index=False)])
+    # Locked rows written before tapes existed get one; the forecast is untouched.
+    cur.executemany("UPDATE predictions SET tape = %s WHERE bout_url = %s "
+                    "AND tape IS NULL AND result IS NULL",
+                    list(zip(preds["tape"], preds["bout_url"])))
     conn.commit()
     cur.close()
     return len(future)
@@ -125,8 +154,8 @@ def score(conn):
                OR (b.fighter_a_id = fb.id AND b.fighter_b_id = fa.id))
         LEFT JOIN fighters w ON w.id = b.winner_id
         LEFT JOIN events e ON e.url = p.event_url
-        WHERE p.result IS NULL AND p.event_date < CURRENT_DATE
-    """)
+        WHERE p.result IS NULL AND p.event_date < %s
+    """, (fight_calendar_today(),))
     scored = 0
     for bout_url, a_url, p_a, bout_id, outcome, winner_url, event_done in cur.fetchall():
         if bout_id is None and not event_done:

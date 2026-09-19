@@ -1,4 +1,5 @@
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
+import Fights from './pages/Fights';
 import Rankings from './pages/Rankings';
 import Fighters from './pages/Fighters';
 import Fighter from './pages/Fighter';
@@ -7,12 +8,10 @@ import ThemeToggle from './ThemeToggle';
 import HealthBanner from './HealthBanner';
 
 const TABS = [
-  { to: '/rankings', label: 'Rankings' },
+  { to: '/fights', label: 'Fights' },
+  { to: '/record', label: 'Record' },
   { to: '/fighters', label: 'Fighters' },
-  { to: '/compare', label: 'Compare' },
-  { to: '/divisions', label: 'Divisions' },
-  { to: '/insights', label: 'Insights' },
-  { to: '/ratings-card', label: 'The Ratings' },
+  { to: '/rankings', label: 'Rankings' },
 ];
 
 export default function App() {
@@ -41,26 +40,16 @@ export default function App() {
 
       <main>
         <Routes>
-          <Route path="/" element={<Navigate to="/rankings" replace />} />
+          <Route path="/" element={<Navigate to="/fights" replace />} />
+          <Route path="/fights" element={<Fights />} />
+          <Route path="/fights/:eventId" element={<Fights />} />
+          <Route
+            path="/record"
+            element={<Placeholder title="Record" note="How locked forecasts scored once the fights happened. Next." />}
+          />
           <Route path="/rankings" element={<Rankings />} />
           <Route path="/fighters" element={<Fighters />} />
           <Route path="/fighters/:id" element={<Fighter />} />
-          <Route
-            path="/compare"
-            element={<Placeholder title="Compare" note="Two trajectories, tale of the tape, common opponents. Step 7." />}
-          />
-          <Route
-            path="/divisions"
-            element={<Placeholder title="Divisions" note="Champions, title lineage and division trends. Step 7." />}
-          />
-          <Route
-            path="/insights"
-            element={<Placeholder title="Insights" note="Era inflation, upsets, records and movers. Step 9." />}
-          />
-          <Route
-            path="/ratings-card"
-            element={<Placeholder title="The Ratings" note="How the Glicko-2 engine works and where it stops working. Step 10." />}
-          />
           <Route path="*" element={<Placeholder title="Not found" note="No such page." />} />
         </Routes>
       </main>

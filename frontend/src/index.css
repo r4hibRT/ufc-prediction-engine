@@ -422,3 +422,176 @@ a.fighter-name:hover { color: var(--red); }
   white-space: nowrap;
 }
 .health-banner ul { margin: 0; padding: 0; list-style: none; font-size: 14px; color: var(--text-muted); }
+
+/* ---------- fights ---------- */
+
+.card-strip {
+  display: flex;
+  gap: 1px;
+  overflow-x: auto;
+  background: var(--line);
+  border: 1px solid var(--line);
+  margin-bottom: 34px;
+}
+.card-strip a {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 10px 18px 11px;
+  background: var(--surface);
+  border-bottom: 3px solid transparent;
+  min-width: 150px;
+}
+.card-strip a:hover { background: var(--raised); }
+.card-strip a.active { border-bottom-color: var(--red); background: var(--raised); }
+.strip-date {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.strip-name {
+  font-family: var(--cond);
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.status {
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  margin-right: 10px;
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.status-locked { background: var(--red); border-color: var(--red); color: #ffffff; }
+.status-scored { background: var(--text); border-color: var(--text); color: var(--bg); }
+
+.bouts { display: flex; flex-direction: column; gap: 14px; }
+
+.bout {
+  background: var(--surface);
+  border-top: 3px solid var(--line-strong);
+  padding: 16px 20px 12px;
+}
+.bout-main { border-top-color: var(--red); padding: 22px 24px 14px; }
+
+.bout-names {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+  margin: 8px 0 12px;
+}
+.corner { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.corner-b { text-align: right; align-items: flex-end; }
+.corner .fighter-name { font-size: 19px; line-height: 1.15; }
+.bout-main .corner .fighter-name {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(1.5rem, 3.6vw, 2.3rem);
+  letter-spacing: 0;
+}
+.corner-sub {
+  font-family: var(--cond);
+  font-size: 14px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+}
+
+.odds { display: flex; align-items: center; gap: 14px; }
+.odds-pct {
+  font-family: var(--display);
+  font-size: 1.55rem;
+  line-height: 1;
+  min-width: 3.2ch;
+  color: var(--text-dim);
+}
+.odds-pct:last-child { text-align: right; }
+.odds-pct.fav { color: var(--text); }
+.bout-main .odds-pct { font-size: 2.1rem; }
+.odds-bar { position: relative; flex: 1; display: flex; height: 8px; gap: 2px; }
+.odds-seg { background: var(--line-strong); }
+.odds-seg.fav { background: var(--red); }
+.odds-mid {
+  position: absolute;
+  left: 50%;
+  top: -4px;
+  bottom: -4px;
+  width: 1px;
+  background: var(--text-dim);
+}
+
+.bout-result {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 10px;
+  font-family: var(--cond);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.pick { font-weight: 700; letter-spacing: 0.12em; font-size: 12px; }
+.pick-hit { color: var(--text); }
+.pick-miss { color: var(--red); }
+
+.tape-toggle {
+  margin-top: 12px;
+  padding: 6px 0;
+  background: none;
+  border: 0;
+  cursor: pointer;
+  font-family: var(--cond);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.tape-toggle:hover, .tape-toggle[aria-expanded='true'] { color: var(--text); }
+
+.tape { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+.tape-row {
+  display: grid;
+  grid-template-columns: 1fr minmax(120px, 1.3fr) 1fr;
+  gap: 12px;
+  align-items: baseline;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--line);
+}
+.tape-row:last-child { border-bottom: 0; }
+.tape-val { font-family: var(--cond); font-size: 16px; color: var(--text-muted); }
+.tape-val:first-child { text-align: left; }
+.tape-val:last-child { text-align: right; }
+.tape-val.edge { color: var(--text); font-weight: 700; }
+.tape-label {
+  text-align: center;
+  font-family: var(--cond);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+
+@media (max-width: 560px) {
+  .bout, .bout-main { padding: 14px 14px 10px; }
+  .corner .fighter-name { font-size: 16px; }
+  .odds { gap: 10px; }
+  .odds-pct { font-size: 1.25rem; }
+  .bout-main .odds-pct { font-size: 1.6rem; }
+  .tape-row { grid-template-columns: 1fr 1.4fr 1fr; gap: 8px; }
+  .tape-val { font-size: 14px; }
+  .tape-label { font-size: 10px; letter-spacing: 0.1em; }
+}

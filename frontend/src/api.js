@@ -18,6 +18,8 @@ export async function get(path, params) {
 
 export const api = {
   health: () => get('/health'),
+  cards: () => get('/cards'),
+  card: (id) => get(`/cards/${id}`),
   peakRankings: (p) => get('/rankings', p),
   rankingsAsOf: (date, p) => get(`/rankings/asof/${date}`, p),
   searchFighters: (q) => get('/fighters', { q }),

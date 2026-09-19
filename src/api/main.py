@@ -11,6 +11,7 @@ from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
+from fastapi import Path as PathParam
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -168,11 +169,19 @@ def ratings_card():
 
 # --- predictions ------------------------------------------------------------
 
-@router.get("/predictions", tags=["predictions"])
-def predictions():
-    """Forecasts for every listed upcoming card, main event first, each with the
-    log-odds contribution of the rating and of each correction."""
-    return pq.get_upcoming()
+@router.get("/cards", tags=["predictions"])
+def cards():
+    """Upcoming cards, plus recent ones with results, in date order."""
+    return pq.get_cards()
+
+
+@router.get("/cards/{event_id}", tags=["predictions"])
+def card(event_id: str = PathParam(..., pattern="^[0-9a-f]{16}$")):
+    """A full card: forecasts, the tale of the tape frozen with them, and results."""
+    result = pq.get_card(event_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="No forecasts for that card")
+    return result
 
 
 @router.get("/predictions/record", tags=["predictions"])
