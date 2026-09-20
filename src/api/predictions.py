@@ -55,7 +55,7 @@ def _bout(r):
         "prediction": {"p_a": round(r["p_a"], 4), "p_b": round(1 - r["p_a"], 4),
                        "predicted_at": r["predicted_at"]},
         "market": None,
-        "narrative": None,
+        "narrative": r["narrative"],
         "result": _result(r),
         "fighters": {"a": _corner(tape.get("a"), r["fighter_a_id"], r["fighter_a_name"]),
                      "b": _corner(tape.get("b"), r["fighter_b_id"], r["fighter_b_name"])},

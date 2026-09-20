@@ -14,6 +14,7 @@ Steps:
   3. rewrite per-bout snapshots for the point-in-time statistics
   4. score last card's predictions, then forecast every listed upcoming card
      with the frozen engine artifact (see src/engine/predict.py)
+  5. write the model insight paragraph for any new forecast (src/engine/narrate.py)
 
 Usage:
     python -m src.automation.refresh
@@ -168,6 +169,12 @@ def step_predictions(dry_run=False):
     return run(dry_run=dry_run, log=log)
 
 
+def step_narration(dry_run=False):
+    from src.engine.narrate import run
+
+    return run(dry_run=dry_run, log=log)
+
+
 def report_health():
     """Record pipeline health after every run; a broken check must not mask the run."""
     try:
@@ -185,6 +192,7 @@ STEPS = [
     ("ratings", step_ratings),
     ("snapshots", step_snapshots),
     ("predictions", step_predictions),
+    ("narration", step_narration),
 ]
 
 
@@ -196,6 +204,8 @@ def main():
                         help="do not rewrite bout_snapshots")
     parser.add_argument("--skip-predictions", action="store_true",
                         help="do not score or write predictions")
+    parser.add_argument("--skip-narration", action="store_true",
+                        help="do not write model insight paragraphs")
     parser.add_argument("--dry-run", action="store_true",
                         help="report what would happen without writing anything")
     args = parser.parse_args()
@@ -215,6 +225,7 @@ def main():
         "ratings": args.skip_ratings,
         "snapshots": args.skip_snapshots,
         "predictions": args.skip_predictions,
+        "narration": args.skip_narration,
     }
 
     results = {}

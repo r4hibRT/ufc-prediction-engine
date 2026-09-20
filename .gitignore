@@ -37,3 +37,6 @@ test_data.csv
 val_data.csv
 frontend/node_modules/
 frontend/dist/
+
+# The narration voice: the product's tone, kept private
+src/engine/voice.py

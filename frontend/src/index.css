@@ -602,13 +602,13 @@ a.fighter-name:hover { color: var(--red); }
 .insights { margin-top: 34px; padding: 26px 18px 8px; border-top: 1px solid var(--line); }
 .insights-title {
   font-family: var(--cond);
-  font-size: 17px;
+  font-size: 14px;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
-.insights p { margin: 16px 0 0; font-size: 22px; line-height: 1.65; max-width: 70ch; }
+.insights p { margin: 14px 0 0; font-size: 16.5px; line-height: 1.7; max-width: 68ch; }
 .insights-pending { color: var(--text-dim); font-style: italic; }
 
 @media (max-width: 560px) {
@@ -620,7 +620,7 @@ a.fighter-name:hover { color: var(--red); }
   .corner-a { grid-area: a; }
   .corner-b { grid-area: b; }
   .corner .fighter-name { font-size: 17px; }
-  .insights p { font-size: 19px; }
+  .insights p { font-size: 15.5px; }
   .odds { gap: 10px; }
   .odds-pct { font-size: 1.25rem; }
   .bout-main .odds-pct { font-size: 1.6rem; }
