@@ -5,15 +5,16 @@
 :root {
   color-scheme: dark light;
 
-  --bg: #0a0a0c;
-  --surface: #151518;
-  --raised: #1d1d21;
-  --line: #323236;
-  --line-strong: #4a4a50;
+  /* Matte charcoal, not black: off-white on soft grey keeps the glare down. */
+  --bg: #17181a;
+  --surface: #1e2023;
+  --raised: #26282c;
+  --line: #34363b;
+  --line-strong: #4d5057;
 
-  --text: #ffffff;
-  --text-muted: #bebebb;
-  --text-dim: #83838a;
+  --text: #ecebe8;
+  --text-muted: #b2b3b3;
+  --text-dim: #85878c;
 
   --red: #f51832;
   --red-action: #d0142b;
@@ -29,30 +30,30 @@
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme='dark']) {
-    --bg: #f5f4f1;
-    --surface: #ffffff;
-    --raised: #ebeae6;
-    --line: #d9d8d3;
-    --line-strong: #b4b3ad;
-    --text: #0a0a0c;
-    --text-muted: #4a4a50;
-    --text-dim: #76757c;
-    --red: #d0142b;
-    --red-deep: #a90f22;
+    --bg: #e8e6e1;
+    --surface: #f3f1ed;
+    --raised: #dedbd4;
+    --line: #cbc8c1;
+    --line-strong: #a5a29b;
+    --text: #222324;
+    --text-muted: #55565a;
+    --text-dim: #7a7b80;
+    --red: #c4162c;
+    --red-deep: #9d1023;
   }
 }
 
 :root[data-theme='light'] {
-  --bg: #f5f4f1;
-  --surface: #ffffff;
-  --raised: #ebeae6;
-  --line: #d9d8d3;
-  --line-strong: #b4b3ad;
-  --text: #0a0a0c;
-  --text-muted: #4a4a50;
-  --text-dim: #76757c;
-  --red: #d0142b;
-  --red-deep: #a90f22;
+  --bg: #e8e6e1;
+  --surface: #f3f1ed;
+  --raised: #dedbd4;
+  --line: #cbc8c1;
+  --line-strong: #a5a29b;
+  --text: #222324;
+  --text-muted: #55565a;
+  --text-dim: #7a7b80;
+  --red: #c4162c;
+  --red-deep: #9d1023;
 }
 
 * { box-sizing: border-box; }
@@ -107,7 +108,7 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
   display: flex;
   align-items: center;
   gap: 9px;
-  padding: 20px 0;
+  padding: 26px 0;
   white-space: nowrap;
 }
 .wordmark em { font-style: normal; color: var(--red); }
@@ -122,12 +123,12 @@ a:focus-visible, button:focus-visible, select:focus-visible, input:focus-visible
 nav.tabs { display: flex; overflow-x: auto; }
 nav.tabs a {
   font-family: var(--cond);
-  font-size: 13.5px;
+  font-size: 14.5px;
   font-weight: 600;
   letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--text-muted);
-  padding: 0 16px;
+  padding: 4px 20px;
   display: flex;
   align-items: center;
   border-bottom: 3px solid transparent;
@@ -137,11 +138,11 @@ nav.tabs a {
 nav.tabs a:hover { color: var(--text); }
 nav.tabs a.active { color: var(--text); border-bottom-color: var(--red); }
 
-main { max-width: var(--content); margin: 0 auto; padding: 40px var(--gutter) 90px; }
+main { max-width: var(--content); margin: 0 auto; padding: 64px var(--gutter) 140px; }
 
 /* ---------- page head ---------- */
 
-.page-head { margin-bottom: 26px; }
+.page-head { margin-bottom: 52px; }
 .page-head h1 {
   font-size: clamp(2.2rem, 6vw, 3.6rem);
   line-height: 0.94;
@@ -151,7 +152,7 @@ main { max-width: var(--content); margin: 0 auto; padding: 40px var(--gutter) 90
 .page-head p {
   color: var(--text-muted);
   max-width: 64ch;
-  margin: 12px 0 0;
+  margin: 22px 0 0;
   font-size: 15px;
 }
 
@@ -431,17 +432,17 @@ a.fighter-name:hover { color: var(--red); }
   overflow-x: auto;
   background: var(--line);
   border: 1px solid var(--line);
-  margin-bottom: 34px;
+  margin-bottom: 56px;
 }
 .card-strip a {
   flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 1px;
-  padding: 10px 18px 11px;
+  gap: 4px;
+  padding: 16px 26px 17px;
   background: var(--surface);
   border-bottom: 3px solid transparent;
-  min-width: 150px;
+  min-width: 176px;
 }
 .card-strip a:hover { background: var(--raised); }
 .card-strip a.active { border-bottom-color: var(--red); background: var(--raised); }
@@ -476,24 +477,37 @@ a.fighter-name:hover { color: var(--red); }
 .status-locked { background: var(--red); border-color: var(--red); color: #ffffff; }
 .status-scored { background: var(--text); border-color: var(--text); color: var(--bg); }
 
-.bouts { display: flex; flex-direction: column; gap: 14px; }
+.bouts { display: flex; flex-direction: column; gap: 34px; }
 
 .bout {
   background: var(--surface);
   border-top: 3px solid var(--line-strong);
-  padding: 16px 20px 12px;
+  padding: 34px 36px 26px;
 }
-.bout-main { border-top-color: var(--red); padding: 22px 24px 14px; }
+.bout-main { border-top-color: var(--red); padding: 44px 40px 32px; }
 
 .bout-names {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 16px;
-  margin: 8px 0 12px;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 28px;
+  align-items: center;
+  margin: 0 0 26px;
 }
-.corner { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+
+/* Division sits between the corners, the way a fight card bills it. */
+.bout-mid { display: flex; flex-direction: column; align-items: center; gap: 5px; }
+.bout-division {
+  font-family: var(--cond);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.corner { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .corner-b { text-align: right; align-items: flex-end; }
-.corner .fighter-name { font-size: 19px; line-height: 1.15; }
+.corner .fighter-name { font-size: 21px; line-height: 1.2; }
 .bout-main .corner .fighter-name {
   font-family: var(--display);
   font-weight: 400;
@@ -502,7 +516,7 @@ a.fighter-name:hover { color: var(--red); }
 }
 .corner-sub {
   font-family: var(--cond);
-  font-size: 14px;
+  font-size: 15px;
   letter-spacing: 0.04em;
   color: var(--text-muted);
 }
@@ -535,7 +549,7 @@ a.fighter-name:hover { color: var(--red); }
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-  margin-top: 10px;
+  margin-top: 18px;
   font-family: var(--cond);
   font-size: 14px;
   letter-spacing: 0.06em;
@@ -547,8 +561,8 @@ a.fighter-name:hover { color: var(--red); }
 .pick-miss { color: var(--red); }
 
 .tape-toggle {
-  margin-top: 12px;
-  padding: 6px 0;
+  margin-top: 18px;
+  padding: 8px 0;
   background: none;
   border: 0;
   cursor: pointer;
@@ -561,37 +575,56 @@ a.fighter-name:hover { color: var(--red); }
 }
 .tape-toggle:hover, .tape-toggle[aria-expanded='true'] { color: var(--text); }
 
-.tape { border-top: 1px solid var(--line); margin-top: 6px; padding-top: 6px; }
+.tape { border-top: 1px solid var(--line); margin-top: 18px; padding-top: 14px; }
 .tape-row {
   display: grid;
-  grid-template-columns: 1fr minmax(120px, 1.3fr) 1fr;
-  gap: 12px;
+  grid-template-columns: 1fr minmax(200px, 1.1fr) 1fr;
+  gap: 22px;
   align-items: baseline;
-  padding: 7px 0;
-  border-bottom: 1px solid var(--line);
+  padding: 15px 18px;
 }
-.tape-row:last-child { border-bottom: 0; }
-.tape-val { font-family: var(--cond); font-size: 16px; color: var(--text-muted); }
+.tape-row:nth-child(odd) { background: var(--raised); }
+.tape-val { font-family: var(--cond); font-size: 19px; color: var(--text-muted); }
 .tape-val:first-child { text-align: left; }
 .tape-val:last-child { text-align: right; }
 .tape-val.edge { color: var(--text); font-weight: 700; }
 .tape-label {
   text-align: center;
   font-family: var(--cond);
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 600;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-dim);
 }
 
+/* Slot for the written read of a matchup; empty until narration lands. */
+.insights { margin-top: 34px; padding: 26px 18px 8px; border-top: 1px solid var(--line); }
+.insights-title {
+  font-family: var(--cond);
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+}
+.insights p { margin: 16px 0 0; font-size: 22px; line-height: 1.65; max-width: 70ch; }
+.insights-pending { color: var(--text-dim); font-style: italic; }
+
 @media (max-width: 560px) {
-  .bout, .bout-main { padding: 14px 14px 10px; }
-  .corner .fighter-name { font-size: 16px; }
+  main { padding-top: 40px; }
+  .bouts { gap: 22px; }
+  .bout, .bout-main { padding: 22px 18px 18px; }
+  .bout-names { grid-template-columns: 1fr 1fr; grid-template-areas: 'mid mid' 'a b'; gap: 14px; }
+  .bout-mid { grid-area: mid; }
+  .corner-a { grid-area: a; }
+  .corner-b { grid-area: b; }
+  .corner .fighter-name { font-size: 17px; }
+  .insights p { font-size: 19px; }
   .odds { gap: 10px; }
   .odds-pct { font-size: 1.25rem; }
   .bout-main .odds-pct { font-size: 1.6rem; }
-  .tape-row { grid-template-columns: 1fr 1.4fr 1fr; gap: 8px; }
-  .tape-val { font-size: 14px; }
-  .tape-label { font-size: 10px; letter-spacing: 0.1em; }
+  .tape-row { grid-template-columns: 1fr 1.3fr 1fr; gap: 10px; padding: 10px 8px; }
+  .tape-val { font-size: 16px; }
+  .tape-label { font-size: 11.5px; letter-spacing: 0.08em; }
 }

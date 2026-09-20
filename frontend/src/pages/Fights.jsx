@@ -12,29 +12,24 @@ const STATUS = {
 const dec2 = (v) => v.toFixed(2);
 const pct = (v) => `${Math.round(v * 100)}%`;
 const feet = (v) => `${Math.floor(v / 12)}'${Math.round(v % 12)}"`;
-const clock = (m) => `${Math.floor(m)}:${String(Math.round((m % 1) * 60)).padStart(2, '0')}`;
 
 function since(days) {
   if (days == null) return null;
   return days < 60 ? `${days} days` : `${Math.round(days / 30.4)} months`;
 }
 
-// Tale-of-the-tape rows; `better` marks which way a stat favours a fighter.
+// Tale-of-the-tape rows: the few that shape a fight, not the full stat sheet.
+// `better` marks which way a stat favours a fighter.
 const TAPE = [
-  { label: 'Record', value: (f) => f.record && `${f.record.w}-${f.record.l}-${f.record.d}` },
+  { label: 'UFC record', value: (f) => f.record && `${f.record.w}-${f.record.l}-${f.record.d}` },
+  { label: 'Glicko rating', value: (f) => f.rating, better: 'high' },
   { label: 'Age', value: (f) => f.age && Math.floor(f.age) },
   { label: 'Height', value: (f) => f.height, fmt: feet },
   { label: 'Reach', value: (f) => f.reach, fmt: (v) => `${v}"` },
   { label: 'Stance', value: (f) => f.stance },
-  { label: 'Sig. strikes landed / min', value: (f) => f.stats?.slpm, fmt: dec2, better: 'high' },
-  { label: 'Striking accuracy', value: (f) => f.stats?.str_acc, fmt: pct, better: 'high' },
-  { label: 'Sig. strikes absorbed / min', value: (f) => f.stats?.sapm, fmt: dec2, better: 'low' },
-  { label: 'Takedowns / 15 min', value: (f) => f.stats?.td_avg, fmt: dec2, better: 'high' },
-  { label: 'Takedown accuracy', value: (f) => f.stats?.td_acc, fmt: pct, better: 'high' },
+  { label: 'Strikes landed / min', value: (f) => f.stats?.slpm, fmt: dec2, better: 'high' },
+  { label: 'Strikes absorbed / min', value: (f) => f.stats?.sapm, fmt: dec2, better: 'low' },
   { label: 'Takedown defence', value: (f) => f.stats?.td_def, fmt: pct, better: 'high' },
-  { label: 'Submission attempts / 15 min', value: (f) => f.stats?.sub_avg, fmt: dec2, better: 'high' },
-  { label: 'Knockdowns / 15 min', value: (f) => f.stats?.kd_avg, fmt: dec2, better: 'high' },
-  { label: 'Average fight time', value: (f) => f.stats?.avg_fight_min, fmt: clock },
   { label: 'Wins KO · Sub · Dec', value: (f) => f.wins_by && `${f.wins_by.ko} · ${f.wins_by.sub} · ${f.wins_by.dec}` },
   { label: 'Since last fight', value: (f) => since(f.days_since_last) },
 ];
@@ -49,9 +44,8 @@ function shortName(name) {
   return /^UFC \d/.test(head) || !rest ? head : rest;
 }
 
-function billing(position, weightClass) {
-  const slot = position === 1 ? 'Main event' : position === 2 ? 'Co-main event' : null;
-  return [slot, weightClass].filter(Boolean).join(' · ');
+function billing(position) {
+  return position === 1 ? 'Main event' : position === 2 ? 'Co-main event' : null;
 }
 
 function FighterName({ f }) {
@@ -93,7 +87,7 @@ function Odds({ pa }) {
   );
 }
 
-function Tape({ a, b }) {
+function Tape({ a, b, narrative }) {
   return (
     <div className="tape">
       {TAPE.map((row) => {
@@ -113,6 +107,12 @@ function Tape({ a, b }) {
           </div>
         );
       })}
+      <section className="insights">
+        <h3 className="insights-title">Model insights</h3>
+        <p className={narrative ? undefined : 'insights-pending'}>
+          {narrative || 'A written read of this matchup, from the forecast, goes here.'}
+        </p>
+      </section>
     </div>
   );
 }
@@ -138,9 +138,12 @@ function FightCard({ bout }) {
   const { a, b } = bout.fighters;
   return (
     <article className={`bout${bout.position === 1 ? ' bout-main' : ''}`}>
-      <div className="eyebrow">{billing(bout.position, bout.weight_class)}</div>
       <div className="bout-names">
         <Corner f={a} side="a" result={bout.result} />
+        <div className="bout-mid">
+          {billing(bout.position) && <span className="eyebrow">{billing(bout.position)}</span>}
+          <span className="bout-division">{bout.weight_class}</span>
+        </div>
         <Corner f={b} side="b" result={bout.result} />
       </div>
       <Odds pa={bout.prediction.p_a} />
@@ -148,7 +151,7 @@ function FightCard({ bout }) {
       <button className="tape-toggle" aria-expanded={open} onClick={() => setOpen(!open)}>
         Tale of the tape <span aria-hidden="true">{open ? '▴' : '▾'}</span>
       </button>
-      {open && <Tape a={a} b={b} />}
+      {open && <Tape a={a} b={b} narrative={bout.narrative} />}
     </article>
   );
 }
@@ -191,10 +194,7 @@ export default function Fights() {
               {fullDate(ev.date)} · {card.data.bouts.length} fights
             </div>
             <h1>{ev.name}</h1>
-            <p>
-              <span className={`status status-${ev.status}`}>{STATUS[ev.status]}</span>
-              Win probabilities from our forecasting engine, model {card.data.model.version}.
-            </p>
+            <p><span className={`status status-${ev.status}`}>{STATUS[ev.status]}</span></p>
           </header>
           <div className="bouts">
             {card.data.bouts.map((bout) => <FightCard key={bout.id} bout={bout} />)}

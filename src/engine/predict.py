@@ -131,9 +131,9 @@ def write(preds, conn):
         ON CONFLICT (bout_url) DO UPDATE SET {updates}, predicted_at = now()
         WHERE predictions.event_date > '{today.isoformat()}'::date
     """, [tuple(r) for r in future[COLUMNS].itertuples(index=False)])
-    # Locked rows written before tapes existed get one; the forecast is untouched.
-    cur.executemany("UPDATE predictions SET tape = %s WHERE bout_url = %s "
-                    "AND tape IS NULL AND result IS NULL",
+    # Rows written before a tape field existed get one; the forecast is untouched.
+    cur.executemany("UPDATE predictions SET tape = %s WHERE bout_url = %s AND result IS NULL "
+                    "AND (tape IS NULL OR NOT tape -> 'a' ? 'rating')",
                     list(zip(preds["tape"], preds["bout_url"])))
     conn.commit()
     cur.close()

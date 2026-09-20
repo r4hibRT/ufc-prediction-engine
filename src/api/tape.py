@@ -59,7 +59,7 @@ def fighter_tape(fighter_id, name, on, profile=None, conn=None):
         return {"id": None, "name": name, "debut": True, "record": None, "streak": None,
                 "age": _age(p.get("dob"), on), "height": _num(p.get("height")),
                 "reach": _num(p.get("reach")), "stance": p.get("stance") if isinstance(p.get("stance"), str) else None,
-                "days_since_last": None, "stats": None, "wins_by": None}
+                "days_since_last": None, "rating": None, "stats": None, "wins_by": None}
 
     f = get_fighter(fighter_id, conn=conn)
     s = get_fighter_stats(fighter_id, conn=conn)
@@ -76,6 +76,7 @@ def fighter_tape(fighter_id, name, on, profile=None, conn=None):
         "age": _age(f["dob"], on),
         "height": _num(f["height"]), "reach": _num(f["reach"]), "stance": f["stance"],
         "days_since_last": (on - rec["last_bout"]).days if rec["last_bout"] else None,
+        "rating": None if f["current_rating"] is None else round(float(f["current_rating"])),
         "stats": stats,
         "wins_by": {"ko": rec["ko_wins"], "sub": rec["sub_wins"], "dec": rec["dec_wins"]},
     }
