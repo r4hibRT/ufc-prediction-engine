@@ -199,11 +199,13 @@ def replay(until=None, extra=None):
         if bout.outcome == "upcoming":
             continue
 
-        # A no contest leaves the record untouched but still counts as activity.
-        counts_result = bout.outcome != "nc"
+        # A no contest, or a win with no recorded winner, leaves the record untouched
+        # but still counts as activity. pandas reads a missing winner as NaN, not None.
+        decided = bout.outcome == "win" and not pd.isna(bout.winner_id)
+        counts_result = decided or bout.outcome == "draw"
         if not counts_result:
             result_a = result_b = None
-        elif bout.winner_id is None:
+        elif not decided:
             result_a = result_b = 0.5
         else:
             result_a = 1 if bout.winner_id == a_id else 0
