@@ -1,7 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { api } from '../api';
-import { useApi } from '../useApi';
+import { api, useApi } from '../api';
 
 const DIVISIONS = [
   'Flyweight', 'Bantamweight', 'Featherweight', 'Lightweight', 'Welterweight',

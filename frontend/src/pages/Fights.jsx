@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
-import { api } from '../api';
-import { useApi } from '../useApi';
+import { api, useApi } from '../api';
 
 const STATUS = {
   upcoming: 'Forecasts can update until fight day',

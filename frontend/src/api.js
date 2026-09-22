@@ -1,9 +1,11 @@
+import { useEffect, useState } from 'react';
+
 // Built: same origin, so relative paths. Dev: Vite serves the app on 5180
 // while the API runs on 8420, so an absolute base is needed.
 const BASE = import.meta.env.VITE_API_URL
   ?? (import.meta.env.DEV ? 'http://127.0.0.1:8420' : '');
 
-export async function get(path, params) {
+async function get(path, params) {
   const url = new URL(BASE + '/api' + path, window.location.origin);
   Object.entries(params || {}).forEach(([k, v]) => {
     if (v !== null && v !== undefined && v !== '') url.searchParams.set(k, v);
@@ -26,6 +28,26 @@ export const api = {
   fighter: (id) => get(`/fighters/${id}`),
   career: (id) => get(`/fighters/${id}/career`),
   stats: (id) => get(`/fighters/${id}/stats`),
-  movers: (p) => get('/movers', p),
-  ratingsCard: () => get('/ratings-card'),
 };
+
+/** Fetch on mount and whenever deps change. Handles the three states a
+ *  network call actually has, so views never render half-loaded data. */
+export function useApi(fn, deps = []) {
+  const [data, setData] = useState(null);
+  const [error, setError] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    fn()
+      .then((d) => { if (!cancelled) setData(d); })
+      .catch((e) => { if (!cancelled) setError(e.message); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, deps);
+
+  return { data, error, loading };
+}

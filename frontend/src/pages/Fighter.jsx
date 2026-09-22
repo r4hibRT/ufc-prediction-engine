@@ -4,8 +4,7 @@ import {
   ComposedChart, Area, Line, Scatter, XAxis, YAxis, CartesianGrid,
   Tooltip, ResponsiveContainer, ReferenceLine,
 } from 'recharts';
-import { api } from '../api';
-import { useApi } from '../useApi';
+import { api, useApi } from '../api';
 
 const num = (v, dp = 0) => (v === null || v === undefined ? '—' : Number(v).toFixed(dp));
 

@@ -1,20 +1,14 @@
-"""Analytics queries for the API layer.
-
-Rating-specific views live in src/ratings/queries.py. This module holds the
-aggregate, point-in-time and comparison queries the front end needs, all
-read-only.
+"""Read-only queries behind the site's fighter and rankings pages.
 
 Two conventions used throughout:
 
   * A fighter's record counts results that stood; no contests are reported
     separately, matching how MMA records are normally written (14-3, 1 NC).
-  * "Division" is inferred from a fighter's most recent bout. Fighters who
-    changed weight class are therefore filed under their latest one -- see
-    docs/product-spec.md section 9.
+  * A fighter's division is the one they fought in most, never a one-off
+    catchweight (see `primary_division_cte` in src/db.py).
 """
 
-from src.db.connection import get_connection
-from src.db.sql import primary_division_cte
+from src.db import get_connection, primary_division_cte
 
 ACTIVE_WINDOW_DAYS = 730
 
@@ -177,42 +171,6 @@ def get_fighter_stats(fighter_id, conn=None):
     return {"totals": career, "rates": career_rates, "entering_last_bout": latest}
 
 
-def get_fighter_stats_entering(fighter_id, bout_id, conn=None):
-    """The point-in-time differentiator: what this fighter's numbers looked
-    like walking into one specific bout."""
-    return _one("""
-        SELECT s.*, b.date AS bout_date, b.weight_class,
-               opp.name AS opponent
-        FROM bout_snapshots s
-        JOIN bouts b ON b.id = s.bout_id
-        JOIN fighters opp ON opp.id = CASE WHEN b.fighter_a_id = s.fighter_id
-                                           THEN b.fighter_b_id ELSE b.fighter_a_id END
-        WHERE s.fighter_id = %s AND s.bout_id = %s;
-    """, (fighter_id, bout_id), conn)
-
-
-def get_current_rankings(limit=25, division=None, conn=None):
-    """Active fighters by current rating. Active = fought inside the window."""
-    return _rows(f"""
-        WITH latest AS (
-            SELECT DISTINCT ON (fighter_id) fighter_id, rating, rd, date
-            FROM ratings ORDER BY fighter_id, date DESC, id DESC
-        ),
-        {primary_division_cte()}
-        SELECT ROW_NUMBER() OVER (ORDER BY l.rating - 2 * l.rd DESC) AS rank,
-               f.id, f.name, ROUND(l.rating, 1) AS rating, ROUND(l.rd, 1) AS rd,
-               ROUND(l.rating - 2 * l.rd, 1) AS adjusted, l.date AS last_bout,
-               div.weight_class AS division
-        FROM latest l
-        JOIN fighters f ON f.id = l.fighter_id
-        LEFT JOIN primary_division div ON div.fid = l.fighter_id
-        WHERE l.date >= (SELECT MAX(date) FROM bouts) - make_interval(days => %s)
-          AND (%s::text IS NULL OR div.weight_class = %s)
-        ORDER BY adjusted DESC
-        LIMIT %s;
-    """, (ACTIVE_WINDOW_DAYS, division, division, limit), conn)
-
-
 def get_rankings_asof(as_of, limit=25, division=None, conn=None):
     """The board as it stood on any past date -- a single query, because every
     rating at every date is already stored."""
@@ -237,87 +195,6 @@ def get_rankings_asof(as_of, limit=25, division=None, conn=None):
     """, (as_of, as_of, as_of, as_of, ACTIVE_WINDOW_DAYS, division, division, limit), conn)
 
 
-def get_movers(event_date=None, limit=15, conn=None):
-    """Biggest rating changes from the most recent card."""
-    return _rows("""
-        WITH target AS (
-            SELECT COALESCE(%s::date, (SELECT MAX(date) FROM bouts)) AS d
-        )
-        SELECT f.name, f.id,
-               ROUND(s.rating_before, 1) AS before,
-               ROUND(r.rating, 1) AS after,
-               ROUND(r.rating - s.rating_before, 1) AS change,
-               b.date, opp.name AS opponent,
-               CASE WHEN b.outcome <> 'win' THEN b.outcome
-                    WHEN b.winner_id = s.fighter_id THEN 'win' ELSE 'loss' END AS result,
-               b.method
-        FROM bout_snapshots s
-        JOIN target t ON s.date = t.d
-        JOIN bouts b ON b.id = s.bout_id
-        JOIN ratings r ON r.bout_id = s.bout_id AND r.fighter_id = s.fighter_id
-        JOIN fighters f ON f.id = s.fighter_id
-        JOIN fighters opp ON opp.id = CASE WHEN b.fighter_a_id = s.fighter_id
-                                           THEN b.fighter_b_id ELSE b.fighter_a_id END
-        WHERE s.rating_before IS NOT NULL
-        ORDER BY ABS(r.rating - s.rating_before) DESC
-        LIMIT %s;
-    """, (event_date, limit), conn)
-
-
-def get_common_opponents(a_id, b_id, conn=None):
-    return _rows("""
-        WITH faced AS (
-            SELECT CASE WHEN b.fighter_a_id = %(f)s THEN b.fighter_b_id
-                        ELSE b.fighter_a_id END AS opp_id,
-                   b.date, b.outcome, b.winner_id, %(f)s AS self_id
-            FROM bouts b
-            WHERE b.fighter_a_id = %(f)s OR b.fighter_b_id = %(f)s
-        )
-        SELECT o.name AS opponent, x.date, x.self_id,
-               CASE WHEN x.outcome <> 'win' THEN x.outcome
-                    WHEN x.winner_id = x.self_id THEN 'win' ELSE 'loss' END AS result
-        FROM faced x JOIN fighters o ON o.id = x.opp_id
-        WHERE x.opp_id IN (
-            SELECT CASE WHEN b.fighter_a_id = %(g)s THEN b.fighter_b_id
-                        ELSE b.fighter_a_id END
-            FROM bouts b WHERE b.fighter_a_id = %(g)s OR b.fighter_b_id = %(g)s
-        )
-        ORDER BY o.name, x.date;
-    """, {"f": a_id, "g": b_id}, conn)
-
-
-def compare_fighters(a_id, b_id, conn=None):
-    """Descriptive only -- no win probability, because among two experienced
-    fighters the rating is near a coin flip."""
-    conn_owned = conn is None
-    if conn_owned:
-        conn = get_connection()
-    try:
-        a = get_fighter(a_id, conn)
-        b = get_fighter(b_id, conn)
-        if a is None or b is None:
-            return None
-        common_a = get_common_opponents(a_id, b_id, conn)
-        common_b = get_common_opponents(b_id, a_id, conn)
-        head_to_head = _rows("""
-            SELECT b.date, b.weight_class, b.method, b.outcome, b.winner_id
-            FROM bouts b
-            WHERE (b.fighter_a_id = %s AND b.fighter_b_id = %s)
-               OR (b.fighter_a_id = %s AND b.fighter_b_id = %s)
-            ORDER BY b.date;
-        """, (a_id, b_id, b_id, a_id), conn)
-        return {
-            "a": a, "b": b,
-            "a_stats": get_fighter_stats(a_id, conn),
-            "b_stats": get_fighter_stats(b_id, conn),
-            "head_to_head": head_to_head,
-            "common_opponents": {"a": common_a, "b": common_b},
-        }
-    finally:
-        if conn_owned:
-            conn.close()
-# Road to UFC and Contender Series tournament finals carry a "title" in their
-# bout name, so a championship needs at least one established fighter in it.
 MIN_TITLE_EXPERIENCE = 5
 
 REAL_TITLE_FIGHTS = """
@@ -409,3 +286,19 @@ def get_p4p_rankings(limit=50, min_bouts=8, conn=None):
         LIMIT %(limit)s;
     """, {"min_bouts": min_bouts, "limit": limit,
           "min_title_exp": MIN_TITLE_EXPERIENCE}, conn)
+
+
+def get_career_arc(fighter_id, conn=None):
+    """Rating trajectory: one point per rated bout, with opponent and result."""
+    return _rows("""
+        SELECT r.date, r.rating, r.rd, b.method, b.weight_class, o.name AS opponent,
+               CASE WHEN b.outcome <> 'win' THEN b.outcome
+                    WHEN b.winner_id = %(f)s THEN 'win' ELSE 'loss' END AS result,
+               b.is_title_fight, b.is_defence, b.id AS bout_id
+        FROM ratings r
+        JOIN bouts b ON r.bout_id = b.id
+        JOIN fighters o ON o.id = CASE WHEN b.fighter_a_id = %(f)s
+                                       THEN b.fighter_b_id ELSE b.fighter_a_id END
+        WHERE r.fighter_id = %(f)s
+        ORDER BY r.date ASC, r.id ASC
+    """, {"f": fighter_id}, conn)

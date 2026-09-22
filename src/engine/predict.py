@@ -1,30 +1,37 @@
-"""Prospective predictions: forecast upcoming cards, then score them.
+"""Serving the engine: forecasting upcoming cards, then scoring them.
 
-Before each card the weekly refresh writes P(fighter A wins) for every listed
-upcoming bout into `predictions`, using the newest artifact in `models/`. A row
+The frozen model is a JSON artifact in models/ (written by src/engine/train.py):
+input columns, coefficients per unit of each raw difference, and the constants
+it was built with. It is linear, so inference needs no sklearn:
+P(A wins) = sigmoid(sum of coefficient * difference).
+
+Before each card the refresh writes P(fighter A wins) for every listed upcoming
+bout into `predictions`, with the tale of the tape frozen alongside it. A row
 may be rewritten until fight day and is frozen from then on, so the table is an
 honest out-of-sample record of a fixed model. Once a card is scraped each row is
 matched to its bout and scored by log loss; a fight that never happened is
 marked not_held.
 
 Run:
-    python -m src.engine.predict            # score, then predict upcoming cards
-    python -m src.engine.predict --dry-run  # print predictions, write nothing
+    python -m src.engine.predict            # score, then forecast upcoming cards
+    python -m src.engine.predict --dry-run  # print forecasts, write nothing
 """
 
 import json
 import math
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import numpy as np
 import pandas as pd
 from psycopg2.extras import execute_values
 
-from src.db.connection import get_connection
-from src.engine import artifact as engine_artifact
+from src.db import get_connection
 from src.engine import features
-from src.engine.rating import Params
+from src.engine.features import Params
+
+MODELS_DIR = Path(__file__).resolve().parents[2] / "models"
 
 # Card dates are US calendar dates; the machine runs in Sydney, a day ahead.
 FIGHT_TZ = ZoneInfo("America/New_York")
@@ -39,6 +46,25 @@ def fight_calendar_today():
     return datetime.now(FIGHT_TZ).date()
 
 
+def load(path=None, directory=MODELS_DIR):
+    """A given artifact, or the newest one in `directory`."""
+    path = path or max(directory.glob("engine-*.json"))
+    return json.loads(Path(path).read_text(encoding="utf-8"))
+
+
+def predict(artifact, rows):
+    """P(fighter A wins) for rows holding the artifact's difference columns."""
+    coefs = pd.Series(artifact["coefficients"])
+    z = rows[coefs.index].to_numpy(dtype=float) @ coefs.to_numpy()
+    return 1 / (1 + np.exp(-z))
+
+
+def contributions(artifact, row):
+    """Per-column share of one bout's log-odds; stored for the narrator, never shown."""
+    coefs = pd.Series(artifact["coefficients"])
+    return row[coefs.index].astype(float) * coefs
+
+
 def check_compatible(art):
     """Refuse an artifact built with feature constants the code no longer uses."""
     stale = {k: v for k, v in art["feature_constants"].items() if getattr(features, k) != v}
@@ -48,9 +74,7 @@ def check_compatible(art):
 
 def fetch_cards(page):
     """Every matchup on every listed upcoming card."""
-    from src.scraper.bouts import scrape_upcoming_card
-    from src.scraper.events import scrape_upcoming_events
-    from src.scraper.pipeline import parse_date
+    from src.scrape import parse_date, scrape_upcoming_card, scrape_upcoming_events
 
     rows = []
     for event in scrape_upcoming_events(page):
@@ -63,7 +87,7 @@ def fetch_cards(page):
 
 def resolve_fighters(cards, page):
     """Database ids for known fighters; debutants get negative ids and a scraped profile."""
-    from src.scraper.fighters import scrape_fighter_profile
+    from src.scrape import scrape_fighter_profile
 
     conn = get_connection()
     ids = dict(pd.read_sql("SELECT url, id FROM fighters", conn).itertuples(index=False))
@@ -92,9 +116,9 @@ def forecast(cards, ids, profiles, art):
     rows = built.set_index("bout_id").loc[extra["bout_id"]]
 
     out = cards.reset_index(drop=True).copy()
-    out["p_a"] = engine_artifact.predict(art, rows)
+    out["p_a"] = predict(art, rows)
     out["glicko_p"] = rows["glicko_p"].to_numpy()
-    out["contributions"] = [json.dumps(engine_artifact.contributions(art, r).round(4).to_dict())
+    out["contributions"] = [json.dumps(contributions(art, r).round(4).to_dict())
                             for _, r in rows.iterrows()]
     out["model_version"] = art["version"]
     out["tape"] = tapes(out, ids, profiles)
@@ -103,7 +127,7 @@ def forecast(cards, ids, profiles, art):
 
 def tapes(cards, ids, profiles):
     """Tale of the tape for each bout as of its card date, as JSON."""
-    from src.api.tape import bout_tape
+    from src.api.cards import bout_tape
 
     by_id = {r["fighter_id"]: r for r in profiles.to_dict("records")}
     conn = get_connection()
@@ -175,12 +199,10 @@ def score(conn):
 
 def run(dry_run=False, log=print):
     from playwright.sync_api import sync_playwright
-    from src.db.schema import create_tables
 
-    art = engine_artifact.load()
+    art = load()
     check_compatible(art)
     if not dry_run:
-        create_tables()
         conn = get_connection()
         scored = score(conn)
         conn.close()

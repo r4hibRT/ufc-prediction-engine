@@ -25,7 +25,7 @@ import time
 import requests
 from dotenv import load_dotenv
 
-from src.db.connection import get_connection
+from src.db import get_connection
 from src.engine.features import BLOCKS
 
 try:  # kept out of version control; without it the site simply shows no paragraphs

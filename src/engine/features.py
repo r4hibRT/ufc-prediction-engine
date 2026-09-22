@@ -1,27 +1,100 @@
-"""Point-in-time correction features for the prediction engine.
+"""The forecasting engine's inputs: a tuned rating and point-in-time corrections.
 
-One row per bout, every feature an A-minus-B difference of what each fighter
-had shown before the bout, so a bout's mirror is its negation. Counts and dates
-come from the analytics replay; ratings and opponent strength come from the
-engine's own in-memory Glicko (`rating.TUNED`), never the site's ratings table.
+Two layers, both computed in memory and never written to the database:
 
-Per-minute rates and percentages are shrunk toward a running division prior,
-built only from bouts on earlier dates: rate = (count + prior * k) / (exposure
-+ k). A debutant therefore carries the division prior, not a missing value.
+1. A Glicko-2 rating replayed with the engine's own constants (`TUNED`), which
+   differ from the site's: a shorter memory forecasts better but ranks history
+   worse. Its pre-bout win probability combines both fighters' uncertainty,
+   g(sqrt(phi_a^2 + phi_b^2)), so it is symmetric in the corners.
+2. Correction features: one row per bout, each an A-minus-B difference of what
+   the fighters had shown before it, so a bout's mirror is its negation. Counts
+   and dates come from the point-in-time history (src/history.py). Per-minute
+   rates and percentages are shrunk toward a running division prior built only
+   from earlier dates: rate = (count + prior * k) / (exposure + k), so a
+   debutant carries the division prior rather than a missing value.
+
 `build(until)` equals `build()` restricted to earlier dates; `truncation_test`
-checks it.
+proves it, which is the guarantee that no feature can see the future.
 
 Run:
-    python -m src.engine.features
+    python -m src.engine.features     # summary plus the truncation test
 """
+
+import math
+from dataclasses import dataclass
 
 import numpy as np
 import pandas as pd
 
-from src.analytics.replay import replay as analytics_replay
-from src.analytics.state import fight_seconds
-from src.db.connection import get_connection
-from src.engine import rating
+from src.db import get_connection
+from src.history import fight_seconds, replay as history_replay
+from src.ratings import (INITIAL_VOLATILITY, RATING_PERIOD_DAYS, SCALE, Glicko2Fighter, _g,
+                         _scale_down, score, update_ratings)
+
+EPS = 1e-6
+
+
+# --- the tuned rating ---------------------------------------------------------
+
+@dataclass(frozen=True)
+class Params:
+    initial_rd: float = 150
+    initial_volatility: float = INITIAL_VOLATILITY
+    tau: float = 0.5
+
+
+# Chosen by train.tune_rating(); the raw probability is overconfident, so the model's b0 is about 0.48.
+TUNED = Params(initial_rd=400, initial_volatility=0.7)
+
+
+def _score(bout):
+    """Fighter A's result, with pandas' NaN for a missing winner read as None."""
+    winner = None if pd.isna(bout.winner_id) else bout.winner_id
+    return score(bout.outcome, winner, bout.fighter_a_id, bout.method)
+
+
+def _pre_bout_phi(fighter, periods, max_phi):
+    return min(math.sqrt(_scale_down(fighter)[1] ** 2
+                         + fighter.volatility ** 2 * periods), max_phi)
+
+
+def rating_replay(bouts, params=Params()):
+    """Pre-bout rating state for every bout and Glicko's P(A wins), in date order."""
+    fighters, last = {}, {}
+    max_phi = params.initial_rd / SCALE
+    rows = []
+    for b in bouts.itertuples(index=False):
+        pair = []
+        for fid in (b.fighter_a_id, b.fighter_b_id):
+            f = fighters.get(fid) or Glicko2Fighter(1500, params.initial_rd,
+                                                    params.initial_volatility)
+            prev = last.get(fid)
+            periods = 1.0 if prev is None else max((b.date - prev).days, 0) / RATING_PERIOD_DAYS
+            pair.append((f, periods, _pre_bout_phi(f, periods, max_phi), prev is None))
+        (fa, per_a, phi_a, new_a), (fb, per_b, phi_b, new_b) = pair
+
+        mu_diff = (fa.rating - fb.rating) / SCALE
+        p = 1 / (1 + math.exp(-_g(math.hypot(phi_a, phi_b)) * mu_diff))
+        rows.append((b.bout_id, fa.rating, fb.rating, phi_a * SCALE, phi_b * SCALE,
+                     new_a, new_b, p))
+
+        s = _score(b)
+        if s is None:
+            continue
+        fighters[b.fighter_a_id], fighters[b.fighter_b_id] = update_ratings(
+            fa, fb, s, per_a, per_b, tau=params.tau, max_rd=params.initial_rd)
+        last[b.fighter_a_id] = last[b.fighter_b_id] = b.date
+
+    return pd.DataFrame(rows, columns=["bout_id", "rating_a", "rating_b", "rd_a", "rd_b",
+                                       "debut_a", "debut_b", "glicko_p"])
+
+
+def logit(p):
+    p = np.clip(p, EPS, 1 - EPS)
+    return np.log(p / (1 - p))
+
+
+# --- correction features ------------------------------------------------------
 
 # Prior strength: minutes of cage time, attempts, or bouts worth of evidence.
 K_MINUTES = 15
@@ -173,7 +246,7 @@ def fighter_features(snaps, fighters, priors, opp):
     return out
 
 
-def build(until=None, params=rating.TUNED, extra=None, extra_fighters=None):
+def build(until=None, params=TUNED, extra=None, extra_fighters=None):
     """One row per bout before `until`: identifiers, Glicko probability, differences.
     `extra` appends upcoming bouts; `extra_fighters` profiles debutants not yet stored."""
     bouts, fighters, stats = _load()
@@ -184,8 +257,8 @@ def build(until=None, params=rating.TUNED, extra=None, extra_fighters=None):
         bouts = pd.concat([bouts, extra[bouts.columns]], ignore_index=True)
     if extra_fighters is not None and len(extra_fighters):
         fighters = pd.concat([fighters, extra_fighters[fighters.columns]], ignore_index=True)
-    ratings = rating.replay(bouts, params)
-    snaps = pd.DataFrame(analytics_replay(until, extra))
+    ratings = rating_replay(bouts, params)
+    snaps = pd.DataFrame(history_replay(until, extra))
     snaps = snaps[snaps["bout_id"].isin(bouts["bout_id"])]
 
     levels = fighter_features(snaps, fighters, division_priors(bouts, stats),
@@ -199,18 +272,10 @@ def build(until=None, params=rating.TUNED, extra=None, extra_fighters=None):
     # Only height and reach can be missing (a few early fighters): no edge either way.
     df[FEATURES] = np.nan_to_num(a[FEATURES].to_numpy() - b[FEATURES].to_numpy())
     df = df.reset_index().merge(ratings[["bout_id", "glicko_p"]], on="bout_id")
-    df["rating"] = rating.logit(df["glicko_p"].to_numpy())
+    df["rating"] = logit(df["glicko_p"].to_numpy())
     decided = (df["outcome"] == "win") & df["winner_id"].notna()
     df["label"] = np.where(decided, (df["winner_id"] == df["fighter_a_id"]).astype(float), np.nan)
     return df.sort_values(["date", "bout_id"], ignore_index=True)
-
-
-def training_frame(df):
-    """Decided bouts only, orientation balanced (see `harness.balance`)."""
-    from src.engine import harness
-    out = df[df["label"].notna()].copy()
-    out["label"] = out["label"].astype(int)
-    return harness.balance(out, features=FEATURES + ["rating"], probs=["glicko_p"])
 
 
 def truncation_test(until="2020-01-01"):

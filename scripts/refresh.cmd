@@ -1,5 +1,5 @@
 @echo off
-REM Wrapper for the weekly refresh, invoked by Task Scheduler.
+REM Wrapper for the scheduled refresh (Monday 12:00, Saturday 08:00), run by Task Scheduler.
 REM Resolves the repo from this script's own location so the task keeps
 REM working if the project moves.
 
@@ -21,7 +21,7 @@ if not exist "%UFC_PYTHON%" (
 set "PYTHONPATH=%ROOT%"
 set "PYTHONUTF8=1"
 
-"%UFC_PYTHON%" -m src.automation.refresh %*
+"%UFC_PYTHON%" -m src.refresh %*
 set "RC=%ERRORLEVEL%"
 
 popd

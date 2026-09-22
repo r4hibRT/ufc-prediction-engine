@@ -1,42 +1,23 @@
+# Secrets
+.env
+
 # Python
 __pycache__/
 *.py[cod]
-*.egg-info/
-dist/
-build/
-*.egg
 
-# Conda / Virtual environments
-.env
-*.env
-env/
-venv/
-
-# Jupyter
-.ipynb_checkpoints/
-
-# Data — don't commit raw scraped data
-data/raw/
-
-# IDE
-.idea/
-.vscode/
-
-# OS
-.DS_Store
-Thumbs.db
-
-progress.log
-
-# Automation run logs
-logs/
-
-# Generated modelling datasets
-train_data.csv
-test_data.csv
-val_data.csv
+# Frontend
 frontend/node_modules/
 frontend/dist/
 
-# The narration voice: the product's tone, kept private
+# Refresh logs and health reports
+logs/
+
+# Private: the narration voice, and working notes kept out of the public repo
 src/engine/voice.py
+notes/
+
+# Editors and OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
