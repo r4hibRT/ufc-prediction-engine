@@ -8,7 +8,18 @@ Two conventions used throughout:
     catchweight (see `primary_division_cte` in src/db.py).
 """
 
-from src.db import get_connection, primary_division_cte
+from src.db import MIN_TITLE_EXPERIENCE, get_connection, primary_division_cte
+
+REAL_TITLE_FIGHTS = """
+    real_titles AS (
+        SELECT b.id, b.winner_id, b.weight_class, b.title_holder_id, b.outcome, b.date
+        FROM bouts b
+        JOIN bout_snapshots sa ON sa.bout_id = b.id AND sa.fighter_id = b.fighter_a_id
+        JOIN bout_snapshots sb ON sb.bout_id = b.id AND sb.fighter_id = b.fighter_b_id
+        WHERE b.is_title_fight
+          AND GREATEST(sa.appearances_before, sb.appearances_before) >= %(min_title_exp)s
+    )
+"""
 
 ACTIVE_WINDOW_DAYS = 730
 
@@ -45,7 +56,8 @@ RECORD_SQL = """
         COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id = %(fid)s
                          AND b.method = 'Decision')                          AS dec_wins,
         COUNT(*) FILTER (WHERE b.is_title_fight)                             AS title_fights,
-        COUNT(*) FILTER (WHERE b.is_defence)                                 AS title_defences,
+        COUNT(*) FILTER (WHERE b.title_holder_id = %(fid)s
+                         AND b.winner_id = %(fid)s)                          AS title_defences,
         MIN(b.date) AS debut, MAX(b.date) AS last_bout
     FROM bouts b
     WHERE b.fighter_a_id = %(fid)s OR b.fighter_b_id = %(fid)s
@@ -195,18 +207,6 @@ def get_rankings_asof(as_of, limit=25, division=None, conn=None):
     """, (as_of, as_of, as_of, as_of, ACTIVE_WINDOW_DAYS, division, division, limit), conn)
 
 
-MIN_TITLE_EXPERIENCE = 5
-
-REAL_TITLE_FIGHTS = """
-    real_titles AS (
-        SELECT b.id, b.winner_id, b.weight_class, b.is_defence, b.outcome, b.date
-        FROM bouts b
-        JOIN bout_snapshots sa ON sa.bout_id = b.id AND sa.fighter_id = b.fighter_a_id
-        JOIN bout_snapshots sb ON sb.bout_id = b.id AND sb.fighter_id = b.fighter_b_id
-        WHERE b.is_title_fight
-          AND GREATEST(sa.appearances_before, sb.appearances_before) >= %(min_title_exp)s
-    )
-"""
 
 
 def get_p4p_rankings(limit=50, min_bouts=8, conn=None):
@@ -234,7 +234,7 @@ def get_p4p_rankings(limit=50, min_bouts=8, conn=None):
         titles AS (
             SELECT winner_id AS fid,
                    COUNT(*) AS title_wins,
-                   COUNT(*) FILTER (WHERE is_defence) AS defences,
+                   COUNT(*) FILTER (WHERE winner_id = title_holder_id) AS defences,
                    COUNT(DISTINCT weight_class) AS title_divisions
             FROM real_titles
             WHERE outcome = 'win' AND winner_id IS NOT NULL
@@ -294,7 +294,7 @@ def get_career_arc(fighter_id, conn=None):
         SELECT r.date, r.rating, r.rd, b.method, b.weight_class, o.name AS opponent,
                CASE WHEN b.outcome <> 'win' THEN b.outcome
                     WHEN b.winner_id = %(f)s THEN 'win' ELSE 'loss' END AS result,
-               b.is_title_fight, b.is_defence, b.id AS bout_id
+               b.is_title_fight, (b.title_holder_id = %(f)s) AS is_defence, b.id AS bout_id
         FROM ratings r
         JOIN bouts b ON r.bout_id = b.id
         JOIN fighters o ON o.id = CASE WHEN b.fighter_a_id = %(f)s

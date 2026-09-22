@@ -24,6 +24,10 @@ load_dotenv()
 # A one-off catchweight bout should never define a fighter's home division.
 NON_DIVISIONS = ("Catch Weight", "Open Weight")
 
+# ufcstats flags tournament finals (TUF, Road to UFC) as title fights. A real
+# title fight has at least one fighter with this many prior UFC appearances.
+MIN_TITLE_EXPERIENCE = 5
+
 
 def get_connection():
     return psycopg2.connect(
@@ -82,6 +86,7 @@ SCHEMA = """
         weight_class VARCHAR(100),
         is_title_fight BOOLEAN DEFAULT FALSE,
         is_defence BOOLEAN DEFAULT FALSE,
+        title_holder_id INTEGER REFERENCES fighters(id),
         UNIQUE(date, fighter_a_id, fighter_b_id)
     );
 
