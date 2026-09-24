@@ -1,10 +1,12 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, NavLink, Navigate } from 'react-router-dom';
 import Fights from './pages/Fights';
 import Record from './pages/Record';
 import Ratings from './pages/Ratings';
 import Fighters from './pages/Fighters';
-import Fighter from './pages/Fighter';
+
+// The only page with charts, so the charting library loads with it and not before.
+const Fighter = lazy(() => import('./pages/Fighter'));
 
 const TABS = [
   { to: '/fights', label: 'Fights' },
@@ -81,7 +83,9 @@ export default function App() {
           <Route path="/fights/:eventId" element={<Fights />} />
           <Route path="/record" element={<Record />} />
           <Route path="/fighters" element={<Fighters />} />
-          <Route path="/fighters/:id" element={<Fighter />} />
+          <Route path="/fighters/:id" element={
+            <Suspense fallback={<div className="state">Loading fighter…</div>}><Fighter /></Suspense>
+          } />
           <Route path="/ratings" element={<Ratings />} />
           <Route path="/rankings" element={<Navigate to="/ratings" replace />} />
           <Route path="*" element={<Note title="Not found" note="No such page." />} />

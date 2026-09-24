@@ -8,14 +8,14 @@ Two conventions used throughout:
     catchweight (see `primary_division_cte` in src/db.py).
 """
 
-from src.db import MIN_TITLE_EXPERIENCE, get_connection, primary_division_cte
+from src.db import CONNECTION_ERRORS, MIN_TITLE_EXPERIENCE, POOL_SIZE, pooled, primary_division_cte
 
 # Fewer bouts than this in a division is too little work there to be ranked in it.
 DIVISION_MIN_BOUTS = 3
 
 REAL_TITLE_FIGHTS = """
     real_titles AS (
-        SELECT b.id, b.winner_id, b.weight_class, b.title_holder_id, b.outcome, b.date
+        SELECT b.id, b.winner_id, b.weight_class, b.outcome, b.date
         FROM bouts b
         JOIN bout_snapshots sa ON sa.bout_id = b.id AND sa.fighter_id = b.fighter_a_id
         JOIN bout_snapshots sb ON sb.bout_id = b.id AND sb.fighter_id = b.fighter_b_id
@@ -24,18 +24,25 @@ REAL_TITLE_FIGHTS = """
     )
 """
 
+def _fetch(conn, sql, params):
+    with conn.cursor() as cur:
+        cur.execute(sql, params)
+        cols = [d[0] for d in cur.description]
+        return [dict(zip(cols, r)) for r in cur.fetchall()]
+
+
 def _rows(sql, params=(), conn=None):
-    owned = conn is None
-    if owned:
-        conn = get_connection()
-    cur = conn.cursor()
-    cur.execute(sql, params)
-    cols = [d[0] for d in cur.description]
-    out = [dict(zip(cols, r)) for r in cur.fetchall()]
-    cur.close()
-    if owned:
-        conn.close()
-    return out
+    """Rows as dicts, on the caller's connection or a pooled one. A hosted database may
+    drop idle connections, so each dead one is discarded and the query retried."""
+    if conn is not None:
+        return _fetch(conn, sql, params)
+    for attempt in range(POOL_SIZE + 1):
+        try:
+            with pooled() as pooled_conn:
+                return _fetch(pooled_conn, sql, params)
+        except CONNECTION_ERRORS:
+            if attempt == POOL_SIZE:
+                raise
 
 
 def _one(sql, params=(), conn=None):
@@ -43,7 +50,8 @@ def _one(sql, params=(), conn=None):
     return rows[0] if rows else None
 
 
-RECORD_SQL = """
+RECORD_SQL = f"""
+    WITH {REAL_TITLE_FIGHTS}
     SELECT
         COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id = %(fid)s)  AS wins,
         COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id <> %(fid)s) AS losses,
@@ -56,9 +64,7 @@ RECORD_SQL = """
                          AND b.method = 'Submission')                        AS sub_wins,
         COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id = %(fid)s
                          AND b.method = 'Decision')                          AS dec_wins,
-        COUNT(*) FILTER (WHERE b.is_title_fight)                             AS title_fights,
-        COUNT(*) FILTER (WHERE b.title_holder_id = %(fid)s
-                         AND b.winner_id = %(fid)s)                          AS title_defences,
+        COUNT(*) FILTER (WHERE b.id IN (SELECT id FROM real_titles))        AS title_fights,
         MIN(b.date) AS debut, MAX(b.date) AS last_bout
     FROM bouts b
     WHERE b.fighter_a_id = %(fid)s OR b.fighter_b_id = %(fid)s
@@ -102,7 +108,8 @@ def get_fighter(fighter_id, conn=None):
 
     if profile is None:
         return None
-    profile["record"] = _one(RECORD_SQL, {"fid": fighter_id}, conn)
+    profile["record"] = _one(RECORD_SQL, {"fid": fighter_id,
+                                          "min_title_exp": MIN_TITLE_EXPERIENCE}, conn)
     return profile
 
 
@@ -209,7 +216,6 @@ def get_p4p_rankings(limit=50, min_bouts=8, conn=None):
         titles AS (
             SELECT winner_id AS fid,
                    COUNT(*) AS title_wins,
-                   COUNT(*) FILTER (WHERE winner_id = title_holder_id) AS defences,
                    COUNT(DISTINCT weight_class) AS title_divisions
             FROM real_titles
             WHERE outcome = 'win' AND winner_id IS NOT NULL
@@ -241,7 +247,6 @@ def get_p4p_rankings(limit=50, min_bouts=8, conn=None):
                ROUND(p.rating - 2 * p.rd, 0) AS adjusted,
                r.wins, r.losses, r.draws,
                COALESCE(t.title_wins, 0)      AS title_wins,
-               COALESCE(t.defences, 0)        AS title_defences,
                COALESCE(t.title_divisions, 0) AS title_divisions,
                bw.best_win_name, bw.best_win_rating,
                GREATEST(COALESCE(st.best_streak, 0),
@@ -289,8 +294,7 @@ def get_division_rankings(division, limit=50, min_bouts=DIVISION_MIN_BOUTS, conn
             GROUP BY f.id
         ),
         titles AS (
-            SELECT winner_id AS fid, COUNT(*) AS title_wins,
-                   COUNT(*) FILTER (WHERE winner_id = title_holder_id) AS defences
+            SELECT winner_id AS fid, COUNT(*) AS title_wins
             FROM real_titles
             WHERE weight_class = %(division)s AND outcome = 'win' AND winner_id IS NOT NULL
             GROUP BY winner_id
@@ -300,8 +304,7 @@ def get_division_rankings(division, limit=50, min_bouts=DIVISION_MIN_BOUTS, conn
                ROUND(bt.rating, 0) AS peak_rating, ROUND(bt.rd, 0) AS rd,
                ROUND(bt.rating - 2 * bt.rd, 0) AS adjusted,
                r.wins, r.losses, r.draws, c.bouts,
-               COALESCE(t.title_wins, 0) AS title_wins,
-               COALESCE(t.defences, 0)   AS title_defences
+               COALESCE(t.title_wins, 0) AS title_wins
         FROM best bt
         JOIN fighters f ON f.id = bt.fighter_id
         JOIN counts c ON c.fighter_id = bt.fighter_id
@@ -320,7 +323,7 @@ def get_career_arc(fighter_id, conn=None):
         SELECT r.date, r.rating, r.rd, b.method, b.weight_class, o.name AS opponent,
                CASE WHEN b.outcome <> 'win' THEN b.outcome
                     WHEN b.winner_id = %(f)s THEN 'win' ELSE 'loss' END AS result,
-               b.is_title_fight, (b.title_holder_id = %(f)s) AS is_defence, b.id AS bout_id
+               b.is_title_fight, b.id AS bout_id
         FROM ratings r
         JOIN bouts b ON r.bout_id = b.id
         JOIN fighters o ON o.id = CASE WHEN b.fighter_a_id = %(f)s

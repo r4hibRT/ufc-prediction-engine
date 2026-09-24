@@ -1,7 +1,13 @@
 """PostgreSQL access: the connection, the schema, and SQL shared across modules.
 
-Credentials come from .env (see .env.example). Every table is created with
+Credentials come from .env (see .env.example): a DATABASE_URL when a host
+provides one, otherwise the DB_* variables. Every table is created with
 `create_tables()`, which is idempotent and runs at the start of each refresh.
+
+Two ways to connect. The pipeline and scripts open a dedicated connection with
+`get_connection()`. The API borrows from a shared pool with `pooled()`, because
+against a hosted database every new connection costs an encrypted handshake, and
+a fighter page alone runs half a dozen queries.
 
 Tables, in the order the pipeline fills them:
     fighters, bouts, bout_stats   scraped from ufcstats (src/scrape.py)
@@ -15,11 +21,23 @@ Run:
 """
 
 import os
+import threading
+from contextlib import contextmanager
 
 import psycopg2
 from dotenv import load_dotenv
+from psycopg2.pool import ThreadedConnectionPool
 
 load_dotenv()
+
+POOL_SIZE = 10
+API_APP_NAME = "ufc-forecast-api"
+# Connection failures that mean "this connection is dead", not "this query is wrong".
+CONNECTION_ERRORS = (psycopg2.OperationalError, psycopg2.InterfaceError)
+
+_pool = None
+_pool_lock = threading.Lock()
+_free = threading.BoundedSemaphore(POOL_SIZE)
 
 # A one-off catchweight bout should never define a fighter's home division.
 NON_DIVISIONS = ("Catch Weight", "Open Weight")
@@ -29,14 +47,47 @@ NON_DIVISIONS = ("Catch Weight", "Open Weight")
 MIN_TITLE_EXPERIENCE = 5
 
 
+def _settings(**extra):
+    url = os.getenv("DATABASE_URL")
+    if url:
+        return {"dsn": url, **extra}
+    settings = {"host": os.getenv("DB_HOST"), "port": os.getenv("DB_PORT"),
+                "dbname": os.getenv("DB_NAME"), "user": os.getenv("DB_USER"),
+                "password": os.getenv("DB_PASSWORD")}
+    if os.getenv("DB_SSLMODE"):
+        settings["sslmode"] = os.getenv("DB_SSLMODE")
+    return {**settings, **extra}
+
+
 def get_connection():
-    return psycopg2.connect(
-        host=os.getenv("DB_HOST"),
-        port=os.getenv("DB_PORT"),
-        dbname=os.getenv("DB_NAME"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASSWORD"),
-    )
+    """A dedicated connection for the pipeline and scripts; the caller closes it."""
+    return psycopg2.connect(**_settings())
+
+
+@contextmanager
+def pooled():
+    """A connection borrowed from the API's pool, in autocommit so no transaction
+    outlives a request. One that fails is closed rather than handed back."""
+    global _pool
+    with _pool_lock:
+        if _pool is None:
+            _pool = ThreadedConnectionPool(1, POOL_SIZE, **_settings(application_name=API_APP_NAME))
+    _free.acquire()  # wait for a free connection rather than fail when all are busy
+    try:
+        conn = _pool.getconn()
+    except Exception:
+        _free.release()
+        raise
+    broken = False
+    try:
+        conn.autocommit = True
+        yield conn
+    except CONNECTION_ERRORS:
+        broken = True
+        raise
+    finally:
+        _pool.putconn(conn, close=broken or bool(conn.closed))
+        _free.release()
 
 
 def primary_division_cte(date_filter=""):
@@ -85,8 +136,6 @@ SCHEMA = """
         time VARCHAR(10),
         weight_class VARCHAR(100),
         is_title_fight BOOLEAN DEFAULT FALSE,
-        is_defence BOOLEAN DEFAULT FALSE,
-        title_holder_id INTEGER REFERENCES fighters(id),
         UNIQUE(date, fighter_a_id, fighter_b_id)
     );
 

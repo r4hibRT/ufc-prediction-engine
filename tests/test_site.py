@@ -61,6 +61,7 @@ def test_record(api):
 def test_ratings_overall_and_by_division(api):
     overall = get(api, "/rankings")
     assert len(overall) == 50 and [r["rank"] for r in overall] == list(range(1, 51))
+    assert "title_defences" not in overall[0]  # dropped: interim belts made them unreliable
     division = get(api, "/rankings?division=Welterweight")
     assert division and all(r["bouts"] >= 3 for r in division)
 
@@ -76,6 +77,32 @@ def test_bad_requests_fail_cleanly(api):
     assert api.get("/api/no-such-route").status_code == 404
     assert api.get("/api/cards/not-an-id").status_code == 422
     assert api.get("/api/fighters/999999999").status_code == 404
+
+
+def test_pool_waits_rather_than_fails_under_load():
+    from concurrent.futures import ThreadPoolExecutor
+
+    from src.api.queries import _rows
+    from src.db import POOL_SIZE
+    burst = 4 * POOL_SIZE
+    with ThreadPoolExecutor(max_workers=burst) as workers:
+        answers = list(workers.map(lambda _: _rows("SELECT pg_sleep(0.05), 1 AS one")[0]["one"],
+                                   range(burst)))
+    assert answers == [1] * burst
+
+
+def test_api_recovers_when_the_database_drops_its_connections():
+    """Hosted databases close idle connections; the next visitor must not see an error."""
+    from src.api.queries import _rows
+    from src.db import API_APP_NAME
+    _rows("SELECT 1")
+    admin = get_connection()
+    admin.autocommit = True
+    with admin.cursor() as cur:
+        cur.execute("SELECT pg_terminate_backend(pid) FROM pg_stat_activity "
+                    "WHERE application_name = %s", (API_APP_NAME,))
+    admin.close()
+    assert _rows("SELECT 1 AS one") == [{"one": 1}]
 
 
 def test_no_feature_can_see_the_future():

@@ -106,12 +106,12 @@ function Tape({ a, b, narrative }) {
           </div>
         );
       })}
-      <section className="insights">
-        <h3 className="insights-title">Model insights</h3>
-        <p className={narrative ? undefined : 'insights-pending'}>
-          {narrative || 'A written read of this matchup, from the forecast, goes here.'}
-        </p>
-      </section>
+      {narrative && (
+        <section className="insights">
+          <h3 className="insights-title">Model insights</h3>
+          <p>{narrative}</p>
+        </section>
+      )}
     </div>
   );
 }
@@ -122,12 +122,15 @@ function ResultLine({ result }) {
     return <div className="bout-result">{result.outcome === 'draw' ? 'Draw' : 'No contest'}</div>;
   }
   const how = [result.method, result.round && `R${result.round}`, result.time].filter(Boolean).join(' · ');
+  // Same verdicts as the Record page; the server applies one rule to both.
+  const [label, tone] = result.upset ? ['Upset', 'pick-miss']
+    : result.correct ? ['Pick right', 'pick-hit']
+    : result.correct === false ? ['Pick wrong', 'pick-wrong']
+    : ['Too close to call', 'pick-wrong'];
   return (
     <div className="bout-result">
       <span>{how}</span>
-      <span className={`pick ${result.correct ? 'pick-hit' : 'pick-miss'}`}>
-        {result.correct ? 'Forecast favourite won' : 'Upset'}
-      </span>
+      <span className={`pick ${tone}`}>{label}</span>
     </div>
   );
 }

@@ -17,7 +17,7 @@ from fastapi.staticfiles import StaticFiles
 
 from src.api import cards as c
 from src.api import queries as q
-from src.db import get_connection
+from src.db import pooled
 from src.refresh import health as pipeline_health
 
 DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
@@ -42,16 +42,13 @@ app.add_middleware(CORSMiddleware, allow_origins=["http://localhost:5180"],
 def health():
     """Liveness, what the database holds, and pipeline health checked live, so a
     scheduled run that never happened still surfaces as stale."""
-    conn = get_connection()
-    cur = conn.cursor()
     counts = {}
-    for table in ("fighters", "bouts", "bout_stats", "ratings", "bout_snapshots"):
-        cur.execute(f"SELECT COUNT(*) FROM {table};")
-        counts[table] = cur.fetchone()[0]
-    cur.execute("SELECT MIN(date), MAX(date) FROM bouts;")
-    first, last = cur.fetchone()
-    cur.close()
-    conn.close()
+    with pooled() as conn, conn.cursor() as cur:
+        for table in ("fighters", "bouts", "bout_stats", "ratings", "bout_snapshots"):
+            cur.execute(f"SELECT COUNT(*) FROM {table};")
+            counts[table] = cur.fetchone()[0]
+        cur.execute("SELECT MIN(date), MAX(date) FROM bouts;")
+        first, last = cur.fetchone()
     return {"status": "ok", "counts": counts,
             "coverage": {"first_bout": first, "last_bout": last},
             "pipeline": pipeline_health()}

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from src.api.cards import _scored, _tally
+from src.api.cards import _result, _scored, _tally
 from src.engine.narrate import ungrounded
 from src.engine.predict import check_compatible, load, predict
 from src.ratings import (Glicko2Fighter, _expected_score, _g, _new_volatility, _scale_down,
@@ -119,3 +119,10 @@ def test_record_calls_picks_upsets_and_toss_ups_the_way_fans_would():
 
     assert _tally([hit, upset, close_loss, toss_up, draw]) == {
         "picks": 3, "correct": 1, "confident_picks": 2, "confident_correct": 1}
+
+
+def test_fight_cards_and_the_record_judge_results_identically():
+    verdict = ("pick", "winner", "correct", "upset")
+    for p_a, a_won in [(0.78, False), (0.57, False), (0.76, True), (0.505, True), (0.30, True)]:
+        card, record = _result(_row(p_a, a_won=a_won)), _scored(_row(p_a, a_won=a_won))
+        assert {k: card[k] for k in verdict} == {k: record[k] for k in verdict}, p_a

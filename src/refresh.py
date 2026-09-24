@@ -9,7 +9,7 @@ step stops the run rather than let later steps build on half-updated tables.
 Steps:
   1. scrape    newly completed events (src/scrape.py)
   2. ratings   the site's Glicko-2 history, rebuilt from scratch (src/ratings.py)
-  3. history   point-in-time snapshots and title defences (src/history.py)
+  3. history   point-in-time snapshots (src/history.py)
   4. forecast  score last card, forecast every listed card (src/engine/predict.py)
   5. narrate   the model insight paragraph per new forecast (src/engine/narrate.py)
 
@@ -65,10 +65,8 @@ def step_ratings(dry_run):
 
 
 def step_history(dry_run):
-    from src.history import mark_title_defences, write_snapshots
-    if dry_run:
-        return {"skipped": "dry-run"}
-    return {**write_snapshots(log=log), **mark_title_defences(log=log)}
+    from src.history import write_snapshots
+    return {"skipped": "dry-run"} if dry_run else write_snapshots(log=log)
 
 
 def step_forecast(dry_run):

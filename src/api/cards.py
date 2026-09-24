@@ -21,6 +21,13 @@ from src.engine.predict import fight_calendar_today
 # Cards stay listed this many days after fight night, so results can be seen.
 RECENT_DAYS = 10
 
+# How a fought bout is judged, on every page: a forecast this close to even is a
+# toss-up rather than a pick, and a lost pick is an upset only if we gave it UPSET.
+TOSS_UP = 0.01
+UPSET = 0.65
+# Picks at or above this win probability count as confident calls on the record.
+CONFIDENT = 0.70
+
 FIGHTER_JOIN = """
     LEFT JOIN fighters fa ON fa.url = p.fighter_a_url
     LEFT JOIN fighters fb ON fb.url = p.fighter_b_url
@@ -43,13 +50,23 @@ def _corner(tape, fighter_id, name):
     return corner
 
 
+def _call(r):
+    """Our pick, the winner and the verdict: one rule for the cards and the record,
+    so a result reads the same everywhere."""
+    p_a = float(r["p_a"])
+    pick = None if abs(p_a - 0.5) < TOSS_UP else ("a" if p_a > 0.5 else "b")
+    winner = None if r["a_won"] is None else ("a" if r["a_won"] else "b")
+    decided = pick is not None and winner is not None
+    return {"pick": pick, "pick_chance": round(max(p_a, 1 - p_a), 4), "winner": winner,
+            "correct": pick == winner if decided else None,
+            "upset": decided and pick != winner and max(p_a, 1 - p_a) >= UPSET}
+
+
 def _result(r):
     if r["result"] is None:
         return None
-    winner = None if r["a_won"] is None else ("a" if r["a_won"] else "b")
-    return {"outcome": r["result"], "winner": winner, "method": r["method"],
-            "round": r["round"], "time": r["time"],
-            "correct": None if winner is None else (r["p_a"] >= 0.5) == r["a_won"]}
+    return {"outcome": r["result"], "method": r["method"], "round": r["round"],
+            "time": r["time"], **_call(r)}
 
 
 def _bout(r):
@@ -109,31 +126,17 @@ def get_card(event_id, conn=None):
     }
 
 
-# A forecast this close to even is a toss-up, not a pick; it counts neither way.
-TOSS_UP = 0.01
-# Picks at or above this win probability count as confident calls.
-CONFIDENT = 0.70
-# A lost pick is only called an upset if we gave it at least this; below, it was close.
-UPSET = 0.65
-
-
 def _scored(r):
     """One fought bout as a fan reads it: who we picked, who won, and how."""
+    call = _call(r)
     p_a = float(r["p_a"])
-    pick = None if abs(p_a - 0.5) < TOSS_UP else ("a" if p_a > 0.5 else "b")
-    winner = None if r["a_won"] is None else ("a" if r["a_won"] else "b")
-    names = {"a": {"id": r["fighter_a_id"], "name": r["fighter_a_name"]},
-             "b": {"id": r["fighter_b_id"], "name": r["fighter_b_name"]}}
     return {
-        "fighters": names,
-        "pick": pick,
-        "pick_chance": round(max(p_a, 1 - p_a), 4),
-        "winner": winner,
-        "winner_chance": None if winner is None else round(p_a if winner == "a" else 1 - p_a, 4),
+        "fighters": {"a": {"id": r["fighter_a_id"], "name": r["fighter_a_name"]},
+                     "b": {"id": r["fighter_b_id"], "name": r["fighter_b_name"]}},
+        **call,
+        "winner_chance": None if call["winner"] is None
+                         else round(p_a if call["winner"] == "a" else 1 - p_a, 4),
         "outcome": r["result"], "method": r["method"], "round": r["round"], "time": r["time"],
-        "correct": None if pick is None or winner is None else pick == winner,
-        "upset": pick is not None and winner is not None and pick != winner
-                 and max(p_a, 1 - p_a) >= UPSET,
     }
 
 

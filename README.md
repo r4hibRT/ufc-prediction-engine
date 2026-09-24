@@ -38,7 +38,7 @@ scrape  ->  ratings  ->  history  ->  forecast  ->  narrate
 3. **History.** Every bout is replayed in date order to record what each fighter
    had done *before* it: record, streaks, finishing rates, striking and grappling
    rates. ufcstats publishes career totals; this gives the numbers as they stood
-   going into each fight. Title defences are derived here too.
+   going into each fight.
 4. **Forecast.** Every listed upcoming bout is run through the frozen model, and
    the result is stored with the tale of the tape as it stood at that moment.
 5. **Narrate.** A language model writes a short read of each fight. It is given
@@ -118,7 +118,7 @@ src/
   db.py              connection, schema, shared SQL
   scrape.py          ufcstats parsing, storage, incremental scrape
   ratings.py         Glicko-2, the site's ratings and per-division ratings
-  history.py         point-in-time replay, snapshots, title defences
+  history.py         point-in-time replay and snapshots
   refresh.py         the scheduled pipeline and its health checks
   engine/
     features.py      the tuned rating and the correction features

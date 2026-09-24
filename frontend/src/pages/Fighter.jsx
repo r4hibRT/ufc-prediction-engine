@@ -25,7 +25,7 @@ function TrajectoryTooltip({ active, payload }) {
       </div>
       <div className="tip-meta">
         {p.method}
-        {p.is_title_fight ? (p.is_defence ? ' · title defence' : ' · title fight') : ''}
+        {p.is_title_fight ? ' · title fight' : ''}
       </div>
       <div className="tip-rating">
         {p.rating.toFixed(0)} <span>± {(2 * p.rd).toFixed(0)}</span>
@@ -108,7 +108,7 @@ export default function Fighter() {
         <h1>{f.name}</h1>
         <p>
           {f.division} · {recordLine}
-          {rec.title_fights ? ` · ${rec.title_fights} title fights, ${rec.title_defences} defences` : ''}
+          {rec.title_fights ? ` · ${rec.title_fights} title fight${rec.title_fights === 1 ? '' : 's'}` : ''}
         </p>
       </div>
 

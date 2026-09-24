@@ -7,14 +7,8 @@ the statistics honest: nothing here can see the future. The output feeds the
 `bout_snapshots` table (the site's point-in-time views) and the forecasting
 engine's features.
 
-It also marks title defences, the other column derived from bout history rather
-than scraped, by tracking each division's champion. ufcstats flags tournament
-finals (TUF, Road to UFC) as title fights too; one is skipped when a champion
-exists, neither fighter is that champion, and neither has MIN_TITLE_EXPERIENCE
-prior appearances, or it would crown a false champion and hide the real one's
-next defence. A vacated or stripped belt is not in the data, so its last holder
-is still treated as champion. Both outputs are recomputed wholesale on every
-refresh, since each is a pure function of the bouts table.
+The table is recomputed wholesale on every refresh, since it is a pure function
+of the bouts and ratings tables.
 
 Run:
     python -m src.history
@@ -23,7 +17,7 @@ Run:
 import pandas as pd
 from psycopg2.extras import execute_values
 
-from src.db import MIN_TITLE_EXPERIENCE, get_connection
+from src.db import get_connection
 
 RECENT_FORM_WINDOW = 5
 
@@ -242,42 +236,5 @@ def write_snapshots(log=print):
     return {"snapshots": rows, "fighters": fighters}
 
 
-def mark_title_defences(log=print):
-    """Mark title fights where a participant walked in holding the belt (see the module
-    docstring for tournament finals). Needs fresh snapshots; a draw or NC retains."""
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT b.id, b.weight_class, b.fighter_a_id, b.fighter_b_id, b.winner_id, b.outcome,
-               GREATEST(sa.appearances_before, sb.appearances_before)
-        FROM bouts b
-        JOIN bout_snapshots sa ON sa.bout_id = b.id AND sa.fighter_id = b.fighter_a_id
-        JOIN bout_snapshots sb ON sb.bout_id = b.id AND sb.fighter_id = b.fighter_b_id
-        WHERE b.is_title_fight ORDER BY b.date ASC, b.id ASC;
-    """)
-    champion, defences, tournaments = {}, {}, 0
-    rows = cur.fetchall()
-    for bout_id, weight_class, a_id, b_id, winner_id, outcome, experience in rows:
-        holder = champion.get(weight_class)
-        if holder in (a_id, b_id):
-            defences[bout_id] = holder
-        elif holder is not None and experience < MIN_TITLE_EXPERIENCE:
-            tournaments += 1
-            continue
-        # The belt only changes hands on a decisive result.
-        if outcome == "win" and winner_id is not None:
-            champion[weight_class] = winner_id
-    cur.execute("UPDATE bouts SET is_defence = FALSE, title_holder_id = NULL WHERE is_title_fight;")
-    cur.executemany("UPDATE bouts SET is_defence = TRUE, title_holder_id = %s WHERE id = %s;",
-                    [(holder, bout_id) for bout_id, holder in defences.items()])
-    conn.commit()
-    cur.close()
-    conn.close()
-    log(f"Title defences marked: {len(defences)} of {len(rows)} title fights "
-        f"({tournaments} tournament finals skipped).")
-    return {"title_fights": len(rows), "defences": len(defences), "tournaments": tournaments}
-
-
 if __name__ == "__main__":
     write_snapshots()
-    mark_title_defences()

@@ -68,7 +68,6 @@ export default function Ratings() {
     rd: Number(r.rd),
     record: `${r.wins}-${r.losses}${r.draws ? `-${r.draws}` : ''}`,
     titleWins: r.title_wins,
-    defences: r.title_defences,
     divisions: r.title_divisions,
     bestWin: r.best_win_name,
     bestWinRating: r.best_win_rating,
@@ -144,10 +143,7 @@ export default function Ratings() {
                     </td>
                     {all && <td className="division">{r.division}</td>}
                     <td className="num">{r.record}</td>
-                    <td className="num titles">
-                      {r.titleWins || '—'}
-                      {r.defences > 0 && <span> ({r.defences} def)</span>}
-                    </td>
+                    <td className="num titles">{r.titleWins || '—'}</td>
                     {all && (
                       <td className="best-win">
                         {r.bestWin
@@ -165,9 +161,8 @@ export default function Ratings() {
           </div>
 
           <p className="footnote">
-            <b>Title wins</b> counts championship bouts won, with successful
-            defences in brackets; tournament finals such as The Ultimate Fighter
-            and Road to UFC are excluded.
+            <b>Title wins</b> counts championship bouts won; tournament finals
+            such as The Ultimate Fighter and Road to UFC are excluded.
             {all
               ? <> <b>Best win</b> is the highest-rated opponent a fighter has beaten,
                   at the rating that opponent held going into the fight. <b>Best run</b> is
