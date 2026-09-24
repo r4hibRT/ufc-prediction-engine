@@ -1,4 +1,4 @@
-# UFC fight forecasts
+# UFC Forecast Engine
 
 Win probabilities for every upcoming UFC fight, published before each card,
 locked on fight night and scored once the results are in. Behind them is a
@@ -86,11 +86,12 @@ real test of it, and the site keeps that record in full.
 
 ## Running it locally
 
-Requirements: Python 3.13, PostgreSQL, Node 22, and Playwright's Chromium
-(`python -m playwright install chromium`).
+Requirements: Python 3.13, PostgreSQL and Node 22.
 
-1. Copy `.env.example` to `.env` and fill in the database credentials.
-2. Run:
+1. `pip install -r requirements.txt`, then `python -m playwright install chromium`
+   for the scraper's browser.
+2. Copy `.env.example` to `.env` and fill in the database credentials.
+3. Run:
 
    ```
    python -m src.db               # create the tables
@@ -100,6 +101,11 @@ Requirements: Python 3.13, PostgreSQL, Node 22, and Playwright's Chromium
 
 For development with hot reload, run `scripts\dev.cmd`. It starts the API on
 port 8420 and the frontend on http://localhost:5180.
+
+**Tests.** `python -m pytest` runs the suite in about 20 seconds: Glicko-2
+against Glickman's worked example, forecast symmetry, the narrator's fact check,
+the scraper's parsers against saved ufcstats pages, and every API route. Tests
+that need the database skip themselves when it is unreachable.
 
 The written match reads are optional. Without `src/engine/voice.py` and an API
 key, they are skipped and the site shows a placeholder in their place.
@@ -124,6 +130,7 @@ src/
     cards.py         fight cards, tale of the tape, the record
     queries.py       fighter and rankings queries
 frontend/src/        React app: Fights, Record, Fighters, Ratings
+tests/               pytest suite; fixtures are saved ufcstats pages
 models/              frozen model artifacts (JSON)
 scripts/             Windows launchers: dev, serve, scheduled refresh
 ```
@@ -132,6 +139,10 @@ scripts/             Windows launchers: dev, serve, scheduled refresh
 
 Fight data comes from [ufcstats.com](http://www.ufcstats.com). This repository
 contains the code that builds the dataset, not the dataset itself.
+
+This project is not affiliated with, endorsed by or sponsored by the UFC, Zuffa
+LLC or TKO Group Holdings; UFC is a registered trademark of Zuffa LLC. Forecasts
+are for entertainment only and are not betting advice.
 
 No licence has been chosen yet, so standard copyright applies: you are welcome to
 read the code, but please ask before reusing it.

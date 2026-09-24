@@ -60,7 +60,7 @@ export default function App() {
       <header className="masthead">
         <div className="masthead-inner">
           <div className="wordmark">
-            UFC<em>/</em>FORECASTS <span>1994&ndash;2026</span>
+            UFC<em>/</em>FORECAST ENGINE
           </div>
           <nav className="tabs">
             {TABS.map((t) => (
@@ -87,6 +87,14 @@ export default function App() {
           <Route path="*" element={<Note title="Not found" note="No such page." />} />
         </Routes>
       </main>
+
+      <footer className="site-footer">
+        <p>
+          Not affiliated with, endorsed by or sponsored by the UFC, Zuffa LLC or TKO
+          Group Holdings. UFC is a registered trademark of Zuffa LLC. Forecasts are for
+          entertainment only and are not betting advice. Fight data from ufcstats.com.
+        </p>
+      </footer>
     </BrowserRouter>
   );
 }

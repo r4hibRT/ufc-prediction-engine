@@ -23,7 +23,7 @@ from src.refresh import health as pipeline_health
 DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist"
 
 app = FastAPI(
-    title="UFC forecasts",
+    title="UFC Forecast Engine",
     description="Fight forecasts, Glicko-2 ratings and point-in-time statistics "
                 "for every UFC bout since 1994.",
     version="1.0.0",

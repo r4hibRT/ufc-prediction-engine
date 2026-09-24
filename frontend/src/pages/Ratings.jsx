@@ -31,20 +31,22 @@ function HowItWorks() {
   return (
     <ul className="explainer">
       <li>
-        <b>Results move the number.</b> Win and a fighter&rsquo;s rating goes up,
-        lose and it goes down, much like Elo in chess. How far depends on the
-        opponent: beating a top-rated fighter is worth far more than beating a
-        newcomer.
+        <b>Elo system</b> Built on Glicko-2, a refinement of the Elo ratings used
+        in chess. Win and a fighter&rsquo;s rating goes up, lose and it goes down;
+        beating a top-rated fighter is worth far more than beating a newcomer.
       </li>
       <li>
-        <b>It knows what it doesn&rsquo;t know.</b> Every rating carries a range.
-        Few fights, or a long layoff, and the range is wide; a long career
-        narrows it. That range is the bar beside each rating.
+        <b>Proven records rank first</b> A rating built on only a few fights is
+        less certain, which shows as a wider bar beside it. Fighters are ranked by
+        the cautious end of that bar, so years of winning count for more than a
+        short hot streak.
       </li>
       <li>
-        <b>Proven records rank first.</b> Fighters are ordered by the cautious
-        end of their range, so years of winning count for more than a short hot
-        streak.
+        <b>Model limitations</b> It sees results, not context: styles,
+        short-notice bookings, injuries and weight cuts are invisible to it. Every
+        win counts the same, whether a knockout, a split decision or a
+        disqualification; draws count as half a win and no contests not at all.
+        Only UFC fights count, so every debutant starts level.
       </li>
     </ul>
   );

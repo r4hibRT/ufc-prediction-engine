@@ -138,7 +138,7 @@ nav.tabs a {
 nav.tabs a:hover { color: var(--text); }
 nav.tabs a.active { color: var(--text); border-bottom-color: var(--red); }
 
-main { max-width: var(--content); margin: 0 auto; padding: 64px var(--gutter) 140px; }
+main { max-width: var(--content); margin: 0 auto; padding: 64px var(--gutter) 100px; }
 
 /* ---------- page head ---------- */
 
@@ -749,4 +749,16 @@ a.fighter-name:hover { color: var(--red); }
   .rec-fight { grid-template-columns: 26px 1fr; gap: 10px; }
   .rec-pick { grid-column: 2; justify-content: flex-start; white-space: normal; flex-wrap: wrap; }
   .rec-card-link { margin: 6px 16px 18px; }
+}
+
+/* ---------- footer ---------- */
+
+.site-footer { border-top: 1px solid var(--line); }
+.site-footer p {
+  max-width: var(--content);
+  margin: 0 auto;
+  padding: 22px var(--gutter) 30px;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-dim);
 }
