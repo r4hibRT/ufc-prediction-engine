@@ -13,9 +13,8 @@ forecasting model validated on seven years of fights it never saw.
   read of the matchup.
 - **The record.** Every forecast is frozen on fight day and scored against the
   result. Nothing is revised after the fact.
-- **Fighters and rankings.** Career rating trajectories, point-in-time
-  statistics, and an all-time pound-for-pound board. There is also a "time
-  machine" that shows the board as it stood on any past date.
+- **Fighters and ratings.** Career rating trajectories, point-in-time
+  statistics, and all-time ratings, overall and for each division.
 
 ## How it works
 
@@ -32,7 +31,10 @@ scrape  ->  ratings  ->  history  ->  forecast  ->  narrate
    fetched until every one of its bouts is stored, and never again after that.
 2. **Ratings.** Standard Glicko-2, updated after every bout. A fighter's rating
    uncertainty grows while they are out of the cage. These are the site's
-   long-memory ratings, used for historical rankings.
+   long-memory ratings, used for the all-time boards. A second replay runs inside
+   each division, so a division's list reflects only the work done there: a
+   champion who moved up for two fights does not outrank that division's
+   long-reigning names.
 3. **History.** Every bout is replayed in date order to record what each fighter
    had done *before* it: record, streaks, finishing rates, striking and grappling
    rates. ufcstats publishes career totals; this gives the numbers as they stood
@@ -43,8 +45,9 @@ scrape  ->  ratings  ->  history  ->  forecast  ->  narrate
    only the stored facts, and every number it writes is checked against them
    before it is published.
 
-Health checks run after every refresh and on every page load. A banner appears
-on the site if data goes stale or a run fails.
+Health checks run after every refresh, and on demand with
+`python -m src.refresh --health` or at `/api/health`. They are for the owner, not
+the site's visitors.
 
 ## The forecasting model
 
@@ -108,7 +111,7 @@ key, they are skipped and the site shows a placeholder in their place.
 src/
   db.py              connection, schema, shared SQL
   scrape.py          ufcstats parsing, storage, incremental scrape
-  ratings.py         Glicko-2 and the site's ratings
+  ratings.py         Glicko-2, the site's ratings and per-division ratings
   history.py         point-in-time replay, snapshots, title defences
   refresh.py         the scheduled pipeline and its health checks
   engine/
@@ -120,7 +123,7 @@ src/
     main.py          routes, and the server for the built frontend
     cards.py         fight cards, tale of the tape, the record
     queries.py       fighter and rankings queries
-frontend/src/        React app: Fights, Fighters, Rankings
+frontend/src/        React app: Fights, Record, Fighters, Ratings
 models/              frozen model artifacts (JSON)
 scripts/             Windows launchers: dev, serve, scheduled refresh
 ```

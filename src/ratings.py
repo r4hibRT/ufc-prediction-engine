@@ -7,8 +7,13 @@ rating periods and capped at the starting RD, so a long layoff never reads as
 "more unknown than a debutant".
 
 The site's ratings use long-memory constants suited to historical rankings and
-are recomputed from scratch into the `ratings` table on every refresh. The
-forecasting engine replays the same equations in memory with its own tuned
+are recomputed from scratch into the `ratings` table on every refresh. Alongside
+each one sits a division rating: the same equations replayed separately inside
+every division, so it measures only the body of work a fighter built there. It
+drives the per-division all-time lists, where a champion who moved up for two
+fights should not outrank the division's long-reigning names.
+
+The forecasting engine replays the same equations in memory with its own tuned
 constants (src/engine/features.py) and never reads this table.
 
 Run:
@@ -17,7 +22,7 @@ Run:
 
 import math
 
-from src.db import get_connection
+from src.db import NON_DIVISIONS, get_connection
 
 TAU = 0.5
 INITIAL_RATING = 1500
@@ -126,13 +131,14 @@ def run_ratings(log=print):
     cur = conn.cursor()
     cur.execute("DELETE FROM ratings;")
     cur.execute("""
-        SELECT id, date, fighter_a_id, fighter_b_id, winner_id, method, outcome
+        SELECT id, date, fighter_a_id, fighter_b_id, winner_id, method, outcome, weight_class
         FROM bouts ORDER BY date ASC, id ASC
     """)
     bouts = cur.fetchall()
 
     fighters, last, rows = {}, {}, []
-    for bout_id, date_, a_id, b_id, winner_id, method, outcome in bouts:
+    in_division, last_in_division = {}, {}   # keyed by (fighter, division)
+    for bout_id, date_, a_id, b_id, winner_id, method, outcome, division in bouts:
         a = fighters.setdefault(a_id, Glicko2Fighter())
         b = fighters.setdefault(b_id, Glicko2Fighter())
         mu_a, _ = _scale_down(a)
@@ -146,12 +152,26 @@ def run_ratings(log=print):
                                       elapsed_periods(last.get(b_id), date_))
         fighters[a_id], fighters[b_id] = new_a, new_b
         last[a_id] = last[b_id] = date_
-        rows.append((a_id, bout_id, date_, new_a.rating, new_a.rd, new_a.volatility, expected_a))
-        rows.append((b_id, bout_id, date_, new_b.rating, new_b.rd, new_b.volatility, 1 - expected_a))
+
+        div_a = div_b = (None, None)
+        if division and division not in NON_DIVISIONS:
+            ka, kb = (a_id, division), (b_id, division)
+            da, db = update_ratings(
+                in_division.get(ka, Glicko2Fighter()), in_division.get(kb, Glicko2Fighter()), s,
+                elapsed_periods(last_in_division.get(ka), date_),
+                elapsed_periods(last_in_division.get(kb), date_))
+            in_division[ka], in_division[kb] = da, db
+            last_in_division[ka] = last_in_division[kb] = date_
+            div_a, div_b = (da.rating, da.rd), (db.rating, db.rd)
+
+        rows.append((a_id, bout_id, date_, new_a.rating, new_a.rd, new_a.volatility, expected_a, *div_a))
+        rows.append((b_id, bout_id, date_, new_b.rating, new_b.rd, new_b.volatility,
+                     1 - expected_a, *div_b))
 
     cur.executemany("""
-        INSERT INTO ratings (fighter_id, bout_id, date, rating, rd, volatility, expected_score)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
+        INSERT INTO ratings (fighter_id, bout_id, date, rating, rd, volatility, expected_score,
+                             division_rating, division_rd)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (fighter_id, bout_id) DO NOTHING
     """, rows)
     conn.commit()

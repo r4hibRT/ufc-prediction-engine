@@ -125,6 +125,8 @@ SCHEMA = """
         rd NUMERIC(8,2),
         volatility NUMERIC(8,6),
         expected_score NUMERIC(6,4),
+        division_rating NUMERIC(8,2),
+        division_rd NUMERIC(8,2),
         UNIQUE(fighter_id, bout_id)
     );
 

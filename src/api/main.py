@@ -7,7 +7,6 @@ Run:
     uvicorn src.api.main:app --port 8420
 """
 
-from datetime import date
 from pathlib import Path
 
 from fastapi import APIRouter, FastAPI, HTTPException, Query
@@ -75,10 +74,10 @@ def card(event_id: str = PathParam(..., pattern="^[0-9a-f]{16}$")):
     return result
 
 
-@router.get("/predictions/record", tags=["forecasts"])
-def prediction_record(limit: int = Query(50, ge=1, le=500)):
-    """How locked forecasts scored once fought, with the model's validation metrics."""
-    return c.get_record(limit=limit)
+@router.get("/record", tags=["forecasts"])
+def record():
+    """Every locked forecast checked against the result, card by card."""
+    return c.get_record()
 
 
 # --- fighters -----------------------------------------------------------------
@@ -117,16 +116,12 @@ def fighter_stats(fighter_id: int):
 # --- rankings -----------------------------------------------------------------
 
 @router.get("/rankings", tags=["rankings"])
-def rankings(limit: int = Query(50, ge=1, le=200), min_bouts: int = Query(8, ge=1)):
-    """All-time pound-for-pound board with championship and resume context."""
-    return q.get_p4p_rankings(limit=limit, min_bouts=min_bouts)
-
-
-@router.get("/rankings/asof/{as_of}", tags=["rankings"])
-def rankings_asof(as_of: date, limit: int = Query(25, ge=1, le=200),
-                  division: str | None = None):
-    """The board as it stood on any past date; every rating at every date is stored."""
-    return q.get_rankings_asof(as_of, limit=limit, division=division)
+def rankings(limit: int = Query(50, ge=1, le=200), division: str | None = None):
+    """All-time ratings: every fighter at their career best, or, for one division,
+    at their best there, judged only on the fights they had in it."""
+    if division:
+        return q.get_division_rankings(division, limit=limit)
+    return q.get_p4p_rankings(limit=limit)
 
 
 app.include_router(router)
@@ -142,6 +137,8 @@ if DIST.is_dir():
     def spa(full_path: str):
         """Serve a real file if one exists, else index.html, so a hard refresh
         on a client-side route returns the app rather than a 404."""
+        if full_path.startswith("api/"):
+            raise HTTPException(status_code=404, detail="No such API route")
         candidate = (DIST / full_path).resolve()
         if full_path and candidate.is_file() and DIST.resolve() in candidate.parents:
             return FileResponse(candidate)

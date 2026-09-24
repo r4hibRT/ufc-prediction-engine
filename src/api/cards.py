@@ -4,19 +4,20 @@ A card lists its bouts in ufcstats order, main event first, each with the
 forecast, the tale of the tape frozen with it, the model insight paragraph, and
 the result once fought. The engine's factor contributions stay server-side.
 
+The record is written for fans rather than statisticians: which picks came in,
+which were upsets, and how the confident calls fared, card by card.
+
 The tape is built by the refresh at forecast time (`bout_tape`) from everything
 scraped before the card, so a locked card shows what was known when it locked.
 A debutant has no UFC history, so only the physicals from their ufcstats profile
 appear.
 """
 
-import math
 from datetime import date
 
 from src.api.queries import _rows, get_fighter, get_fighter_stats
-from src.engine.predict import fight_calendar_today, load
+from src.engine.predict import fight_calendar_today
 
-COIN_FLIP_LOG_LOSS = math.log(2)
 # Cards stay listed this many days after fight night, so results can be seen.
 RECENT_DAYS = 10
 
@@ -108,33 +109,71 @@ def get_card(event_id, conn=None):
     }
 
 
-def get_record(limit=50, conn=None):
-    """Summary of scored forecasts on decided bouts, plus the most recent ones."""
-    summary = _rows("""
-        SELECT COUNT(*) AS n,
-               AVG(log_loss) AS log_loss,
-               AVG(POWER(CASE WHEN a_won THEN 1 - p_a ELSE p_a END, 2)) AS brier,
-               AVG(CASE WHEN (p_a >= 0.5) = a_won THEN 1.0 ELSE 0.0 END) AS favourite_won
-        FROM predictions WHERE a_won IS NOT NULL
-    """, conn=conn)[0]
-    recent = _rows(f"""
-        SELECT p.*, fa.id AS fighter_a_id, fb.id AS fighter_b_id,
+# A forecast this close to even is a toss-up, not a pick; it counts neither way.
+TOSS_UP = 0.01
+# Picks at or above this win probability count as confident calls.
+CONFIDENT = 0.70
+# A lost pick is only called an upset if we gave it at least this; below, it was close.
+UPSET = 0.65
+
+
+def _scored(r):
+    """One fought bout as a fan reads it: who we picked, who won, and how."""
+    p_a = float(r["p_a"])
+    pick = None if abs(p_a - 0.5) < TOSS_UP else ("a" if p_a > 0.5 else "b")
+    winner = None if r["a_won"] is None else ("a" if r["a_won"] else "b")
+    names = {"a": {"id": r["fighter_a_id"], "name": r["fighter_a_name"]},
+             "b": {"id": r["fighter_b_id"], "name": r["fighter_b_name"]}}
+    return {
+        "fighters": names,
+        "pick": pick,
+        "pick_chance": round(max(p_a, 1 - p_a), 4),
+        "winner": winner,
+        "winner_chance": None if winner is None else round(p_a if winner == "a" else 1 - p_a, 4),
+        "outcome": r["result"], "method": r["method"], "round": r["round"], "time": r["time"],
+        "correct": None if pick is None or winner is None else pick == winner,
+        "upset": pick is not None and winner is not None and pick != winner
+                 and max(p_a, 1 - p_a) >= UPSET,
+    }
+
+
+def _tally(bouts):
+    picked = [b for b in bouts if b["correct"] is not None]
+    confident = [b for b in picked if b["pick_chance"] >= CONFIDENT]
+    return {"picks": len(picked), "correct": sum(b["correct"] for b in picked),
+            "confident_picks": len(confident),
+            "confident_correct": sum(b["correct"] for b in confident)}
+
+
+def get_record(conn=None):
+    """Every scored forecast, card by card, newest first, with fan-level totals."""
+    rows = _rows(f"""
+        SELECT p.event_url, p.event_name, p.event_date, p.fighter_a_name, p.fighter_b_name,
+               p.p_a, p.a_won, p.result, fa.id AS fighter_a_id, fb.id AS fighter_b_id,
                b.method, b.round, b.time
         FROM predictions p {FIGHTER_JOIN}
         LEFT JOIN bouts b ON b.id = p.bout_id
         WHERE p.result IS NOT NULL AND p.result <> 'not_held'
-        ORDER BY p.event_date DESC, p.card_position NULLS LAST
-        LIMIT %s
-    """, (limit,), conn)
+        ORDER BY p.event_date DESC, p.event_url, p.card_position NULLS LAST
+    """, conn=conn)
 
-    art = load()
+    cards = {}
+    for r in rows:
+        card = cards.setdefault(r["event_url"], {
+            "id": _key(r["event_url"]), "name": r["event_name"], "date": r["event_date"],
+            "bouts": []})
+        card["bouts"].append(_scored(r))
+    cards = list(cards.values())
+    for card in cards:
+        card.update(_tally(card["bouts"]))
+
+    everything = [b for card in cards for b in card["bouts"]]
+    upsets = [b | {"card": card["name"]} for card in cards for b in card["bouts"]
+              if b["correct"] is False]
     return {
-        "summary": {k: (float(v) if v is not None else None) for k, v in summary.items()}
-                   | {"n": summary["n"], "coin_flip_log_loss": COIN_FLIP_LOG_LOSS},
-        "model": {"version": art["version"], "trained_through": art["trained_through"],
-                  "validation": art["validation"]},
-        "recent": [_bout(r) | {"event_name": r["event_name"], "event_date": r["event_date"]}
-                   for r in recent],
+        "totals": _tally(everything) | {"confident_threshold": CONFIDENT},
+        "biggest_upset": min(upsets, key=lambda b: b["winner_chance"]) if upsets else None,
+        "cards": cards,
     }
 
 

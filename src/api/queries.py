@@ -10,6 +10,9 @@ Two conventions used throughout:
 
 from src.db import MIN_TITLE_EXPERIENCE, get_connection, primary_division_cte
 
+# Fewer bouts than this in a division is too little work there to be ranked in it.
+DIVISION_MIN_BOUTS = 3
+
 REAL_TITLE_FIGHTS = """
     real_titles AS (
         SELECT b.id, b.winner_id, b.weight_class, b.title_holder_id, b.outcome, b.date
@@ -20,8 +23,6 @@ REAL_TITLE_FIGHTS = """
           AND GREATEST(sa.appearances_before, sb.appearances_before) >= %(min_title_exp)s
     )
 """
-
-ACTIVE_WINDOW_DAYS = 730
 
 def _rows(sql, params=(), conn=None):
     owned = conn is None
@@ -183,32 +184,6 @@ def get_fighter_stats(fighter_id, conn=None):
     return {"totals": career, "rates": career_rates, "entering_last_bout": latest}
 
 
-def get_rankings_asof(as_of, limit=25, division=None, conn=None):
-    """The board as it stood on any past date -- a single query, because every
-    rating at every date is already stored."""
-    return _rows(f"""
-        WITH latest AS (
-            SELECT DISTINCT ON (fighter_id) fighter_id, rating, rd, date
-            FROM ratings WHERE date <= %s
-            ORDER BY fighter_id, date DESC, id DESC
-        ),
-        {primary_division_cte("WHERE date <= %s")}
-        SELECT ROW_NUMBER() OVER (ORDER BY l.rating - 2 * l.rd DESC) AS rank,
-               f.id, f.name, ROUND(l.rating, 1) AS rating, ROUND(l.rd, 1) AS rd,
-               ROUND(l.rating - 2 * l.rd, 1) AS adjusted, l.date AS last_bout,
-               div.weight_class AS division
-        FROM latest l
-        JOIN fighters f ON f.id = l.fighter_id
-        LEFT JOIN primary_division div ON div.fid = l.fighter_id
-        WHERE l.date >= %s::date - make_interval(days => %s)
-          AND (%s::text IS NULL OR div.weight_class = %s)
-        ORDER BY adjusted DESC
-        LIMIT %s;
-    """, (as_of, as_of, as_of, as_of, ACTIVE_WINDOW_DAYS, division, division, limit), conn)
-
-
-
-
 def get_p4p_rankings(limit=50, min_bouts=8, conn=None):
     """Ranking table built from what an MMA fan actually compares: title wins,
     championship divisions, best win, and the rating with its uncertainty."""
@@ -285,6 +260,57 @@ def get_p4p_rankings(limit=50, min_bouts=8, conn=None):
         ORDER BY ranked.score DESC
         LIMIT %(limit)s;
     """, {"min_bouts": min_bouts, "limit": limit,
+          "min_title_exp": MIN_TITLE_EXPERIENCE}, conn)
+
+
+def get_division_rankings(division, limit=50, min_bouts=DIVISION_MIN_BOUTS, conn=None):
+    """All-time board for one division, from the division-only rating: each fighter
+    at their best there, judged on the body of work they built in that division."""
+    return _rows(f"""
+        WITH {REAL_TITLE_FIGHTS},
+        here AS (
+            SELECT r.fighter_id, r.division_rating AS rating, r.division_rd AS rd
+            FROM ratings r JOIN bouts b ON b.id = r.bout_id
+            WHERE b.weight_class = %(division)s AND r.division_rating IS NOT NULL
+        ),
+        best AS (
+            SELECT DISTINCT ON (fighter_id) fighter_id, rating, rd
+            FROM here ORDER BY fighter_id, rating - 2 * rd DESC
+        ),
+        counts AS (SELECT fighter_id, COUNT(*) AS bouts FROM here GROUP BY fighter_id),
+        record AS (
+            SELECT f.id AS fid,
+                   COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id = f.id)  AS wins,
+                   COUNT(*) FILTER (WHERE b.outcome = 'win' AND b.winner_id <> f.id) AS losses,
+                   COUNT(*) FILTER (WHERE b.outcome = 'draw')                        AS draws
+            FROM fighters f
+            JOIN bouts b ON (b.fighter_a_id = f.id OR b.fighter_b_id = f.id)
+            WHERE b.weight_class = %(division)s
+            GROUP BY f.id
+        ),
+        titles AS (
+            SELECT winner_id AS fid, COUNT(*) AS title_wins,
+                   COUNT(*) FILTER (WHERE winner_id = title_holder_id) AS defences
+            FROM real_titles
+            WHERE weight_class = %(division)s AND outcome = 'win' AND winner_id IS NOT NULL
+            GROUP BY winner_id
+        )
+        SELECT ROW_NUMBER() OVER (ORDER BY bt.rating - 2 * bt.rd DESC) AS rank,
+               f.id, f.name, %(division)s AS division,
+               ROUND(bt.rating, 0) AS peak_rating, ROUND(bt.rd, 0) AS rd,
+               ROUND(bt.rating - 2 * bt.rd, 0) AS adjusted,
+               r.wins, r.losses, r.draws, c.bouts,
+               COALESCE(t.title_wins, 0) AS title_wins,
+               COALESCE(t.defences, 0)   AS title_defences
+        FROM best bt
+        JOIN fighters f ON f.id = bt.fighter_id
+        JOIN counts c ON c.fighter_id = bt.fighter_id
+        JOIN record r ON r.fid = bt.fighter_id
+        LEFT JOIN titles t ON t.fid = bt.fighter_id
+        WHERE c.bouts >= %(min_bouts)s
+        ORDER BY bt.rating - 2 * bt.rd DESC
+        LIMIT %(limit)s;
+    """, {"division": division, "min_bouts": min_bouts, "limit": limit,
           "min_title_exp": MIN_TITLE_EXPERIENCE}, conn)
 
 
