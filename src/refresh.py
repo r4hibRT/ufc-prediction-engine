@@ -12,10 +12,12 @@ Steps:
   3. history   point-in-time snapshots (src/history.py)
   4. forecast  score last card, forecast every listed card (src/engine/predict.py)
   5. narrate   the model insight paragraph per new forecast (src/engine/narrate.py)
+  6. publish   the site as static files to Cloudflare Pages (src/publish.py)
 
 Health is checked against live state rather than the last log line, at the end
-of every run and on every /api/health request, so a scheduled run that never
-happened at all still shows up as stale on the site.
+of every run and on every /api/health request. A successful run also pings
+HEALTHCHECK_URL (healthchecks.io), which alerts the owner when a scheduled run
+has not succeeded within its grace period, including when this PC was off.
 
 Run:
     python -m src.refresh                  # the whole pipeline
@@ -79,8 +81,13 @@ def step_narrate(dry_run):
     return run(dry_run=dry_run, log=log)
 
 
+def step_publish(dry_run):
+    from src.publish import run
+    return run(dry_run=dry_run, log=log)
+
+
 STEPS = [("scrape", step_scrape), ("ratings", step_ratings), ("history", step_history),
-         ("forecast", step_forecast), ("narrate", step_narrate)]
+         ("forecast", step_forecast), ("narrate", step_narrate), ("publish", step_publish)]
 
 
 # --- health -------------------------------------------------------------------
@@ -149,6 +156,19 @@ def health():
         "newest_bout": newest.isoformat() if newest else None,
         "checks": checks,
     }
+
+
+def ping_healthcheck():
+    """Report a successful run; a missing ping past the grace period raises the alarm."""
+    url = os.getenv("HEALTHCHECK_URL")
+    if not url:
+        return
+    import requests
+    try:
+        requests.get(url, timeout=10)
+        log("Healthcheck pinged.")
+    except requests.RequestException as exc:
+        log(f"Healthcheck ping failed: {type(exc).__name__}")
 
 
 def report_health():
@@ -244,6 +264,8 @@ def run(skip=(), dry_run=False):
             "ok": failed_step is None, "failed_step": failed_step, "results": results,
         }, indent=2, default=str), encoding="utf-8")
         report_health()
+        if failed_step is None:
+            ping_healthcheck()
     return 1 if failed_step else 0
 
 

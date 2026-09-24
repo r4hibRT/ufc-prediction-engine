@@ -38,12 +38,6 @@ def _key(url):
     return url.rstrip("/").rsplit("/", 1)[-1]
 
 
-def _status(event_date, scored, bouts, today):
-    if event_date > today:
-        return "upcoming"
-    return "scored" if scored and scored == bouts else "locked"
-
-
 def _corner(tape, fighter_id, name):
     corner = dict(tape or {"name": name})
     corner["id"] = corner.get("id") or fighter_id
@@ -97,10 +91,17 @@ def get_cards(conn=None):
         GROUP BY event_url, event_name, event_date
         ORDER BY event_date, event_url
     """, (today, RECENT_DAYS), conn)
+    # No status here: the browser derives it from the date, so a published copy
+    # still turns "locked" on fight day without a new upload.
     return [{"id": _key(r["event_url"]), "name": r["event_name"], "date": r["event_date"],
-             "bouts": r["bouts"], "headliner": r["headliner"],
-             "status": _status(r["event_date"], r["scored"], r["bouts"], today)}
+             "bouts": r["bouts"], "scored": r["scored"], "headliner": r["headliner"]}
             for r in rows]
+
+
+def get_meta(conn=None):
+    return _rows("""
+        SELECT GREATEST(MAX(predicted_at), MAX(scored_at))::date AS updated FROM predictions
+    """, conn=conn)[0]
 
 
 def get_card(event_id, conn=None):
@@ -116,11 +117,8 @@ def get_card(event_id, conn=None):
     if not rows:
         return None
     first = rows[0]
-    scored = sum(r["result"] is not None for r in rows)
     return {
-        "event": {"id": event_id, "name": first["event_name"], "date": first["event_date"],
-                  "status": _status(first["event_date"], scored, len(rows),
-                                    fight_calendar_today())},
+        "event": {"id": event_id, "name": first["event_name"], "date": first["event_date"]},
         "model": {"version": first["model_version"]},
         "bouts": [_bout(r) for r in rows],
     }

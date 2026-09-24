@@ -456,6 +456,16 @@ a.fighter-name:hover { color: var(--red); }
 }
 .status-locked { background: var(--red); border-color: var(--red); color: #ffffff; }
 .status-scored { background: var(--text); border-color: var(--text); color: var(--bg); }
+/* A block, so on a narrow screen it drops below the status tag rather than overflowing. */
+.updated {
+  display: inline-block;
+  font-family: var(--cond);
+  font-size: 13px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  white-space: nowrap;
+}
 
 .bouts { display: flex; flex-direction: column; gap: 34px; }
 

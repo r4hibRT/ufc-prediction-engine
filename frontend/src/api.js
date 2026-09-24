@@ -5,6 +5,10 @@ import { useEffect, useState } from 'react';
 const BASE = import.meta.env.VITE_API_URL
   ?? (import.meta.env.DEV ? 'http://127.0.0.1:8420' : '');
 
+// The published site ("vite build --mode static") has no server: every response
+// is a pre-built JSON file under /data, written by src/publish.py.
+const STATIC = import.meta.env.MODE === 'static';
+
 async function get(path, params) {
   const url = new URL(BASE + '/api' + path, window.location.origin);
   Object.entries(params || {}).forEach(([k, v]) => {
@@ -18,7 +22,37 @@ async function get(path, params) {
   return res.json();
 }
 
-export const api = {
+async function file(path) {
+  const res = await fetch(`/data${path}.json`);
+  // A missing file comes back as the app's own page, not a 404, so check the type.
+  if (!res.ok || !(res.headers.get('content-type') || '').includes('json')) {
+    throw new Error('Not found');
+  }
+  return res.json();
+}
+
+/** Same name as src/publish.py gives each division's ratings file. */
+const slug = (division) => division.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+
+let fighterIndex;
+async function searchIndex(q) {
+  fighterIndex ??= file('/fighters');
+  const needle = q.toLowerCase();
+  return (await fighterIndex).filter((f) => f.name.toLowerCase().includes(needle)).slice(0, 20);
+}
+
+export const api = STATIC ? {
+  meta: () => file('/meta'),
+  cards: () => file('/cards'),
+  card: (id) => file(`/cards/${id}`),
+  record: () => file('/record'),
+  ratings: ({ division } = {}) => file(division ? `/rankings/${slug(division)}` : '/rankings'),
+  searchFighters: searchIndex,
+  fighter: (id) => file(`/fighters/${id}`),
+  career: (id) => file(`/fighters/${id}/career`),
+  stats: (id) => file(`/fighters/${id}/stats`),
+} : {
+  meta: () => get('/meta'),
   cards: () => get('/cards'),
   card: (id) => get(`/cards/${id}`),
   record: () => get('/record'),

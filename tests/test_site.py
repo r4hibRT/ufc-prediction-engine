@@ -38,6 +38,8 @@ def get(api, path):
 def test_fight_cards(api):
     cards = get(api, "/cards")
     assert cards, "no cards listed"
+    # The browser derives each card's status from these, so they must be present.
+    assert all({"date", "bouts", "scored"} <= card.keys() for card in cards)
     card = get(api, f"/cards/{cards[0]['id']}")
     for bout in card["bouts"]:
         p = bout["prediction"]
@@ -49,6 +51,10 @@ def test_engine_internals_never_reach_the_page(api):
     for path in ["/cards", f"/cards/{get(api, '/cards')[0]['id']}", "/record"]:
         body = api.get("/api" + path).text
         assert "contributions" not in body and "glicko_p" not in body, path
+
+
+def test_updated_date(api):
+    assert get(api, "/meta")["updated"]
 
 
 def test_record(api):
@@ -103,6 +109,19 @@ def test_api_recovers_when_the_database_drops_its_connections():
                     "WHERE application_name = %s", (API_APP_NAME,))
     admin.close()
     assert _rows("SELECT 1 AS one") == [{"one": 1}]
+
+
+def test_published_files_are_exactly_what_the_api_serves(api, tmp_path):
+    from src.publish import export, slug
+    export(tmp_path, fighter_ids=[1455], log=lambda message: None)
+    for route, path in [("/cards", "cards"), ("/record", "record"), ("/rankings", "rankings"),
+                        ("/fighters/1455", "fighters/1455"),
+                        ("/fighters/1455/career", "fighters/1455/career")]:
+        assert (tmp_path / f"{path}.json").read_bytes() == api.get("/api" + route).content, route
+    division = api.get("/api/rankings", params={"division": "Welterweight"}).content
+    assert (tmp_path / "rankings" / f"{slug('Welterweight')}.json").read_bytes() == division
+    index = (tmp_path / "fighters.json").read_text(encoding="utf-8")
+    assert '"name":"Kamaru Usman"' in index
 
 
 def test_no_feature_can_see_the_future():

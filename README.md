@@ -23,7 +23,7 @@ forecast the next ones; Saturday morning runs pick up weigh-in changes. Each ste
 rebuilds its output from scratch, so a failed run can simply be run again:
 
 ```
-scrape  ->  ratings  ->  history  ->  forecast  ->  narrate
+scrape  ->  ratings  ->  history  ->  forecast  ->  narrate  ->  publish
 ```
 
 1. **Scrape.** New events, bouts, per-fight statistics and fighter profiles come
@@ -44,6 +44,10 @@ scrape  ->  ratings  ->  history  ->  forecast  ->  narrate
 5. **Narrate.** A language model writes a short read of each fight. It is given
    only the stored facts, and every number it writes is checked against them
    before it is published.
+6. **Publish.** The site is read-only and changes only when this pipeline runs,
+   so the public copy is static: every page's data is exported as JSON files
+   (exactly what the API serves) and uploaded with the built site to Cloudflare
+   Pages. No server or hosted database is involved.
 
 Health checks run after every refresh, and on demand with
 `python -m src.refresh --health` or at `/api/health`. They are for the owner, not
@@ -120,6 +124,7 @@ src/
   ratings.py         Glicko-2, the site's ratings and per-division ratings
   history.py         point-in-time replay and snapshots
   refresh.py         the scheduled pipeline and its health checks
+  publish.py         static export of every page's data, upload to Cloudflare Pages
   engine/
     features.py      the tuned rating and the correction features
     train.py         evaluation, rating tuning, feature selection, artifact

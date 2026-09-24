@@ -56,6 +56,12 @@ def health():
 
 # --- forecasts ----------------------------------------------------------------
 
+@router.get("/meta", tags=["meta"])
+def meta():
+    """When the forecasts were last written, for the site's "Updated" line."""
+    return c.get_meta()
+
+
 @router.get("/cards", tags=["forecasts"])
 def cards():
     """Upcoming cards, plus recent ones with results, in date order."""

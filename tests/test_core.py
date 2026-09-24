@@ -14,6 +14,7 @@ import pytest
 from src.api.cards import _result, _scored, _tally
 from src.engine.narrate import ungrounded
 from src.engine.predict import check_compatible, load, predict
+from src.publish import slug
 from src.ratings import (Glicko2Fighter, _expected_score, _g, _new_volatility, _scale_down,
                          update_ratings)
 
@@ -77,6 +78,14 @@ def test_a_better_rating_means_a_better_chance():
     rows = pd.DataFrame(0.0, index=range(3), columns=list(art["coefficients"]))
     rows["rating"] = [-1.0, 0.0, 1.0]
     assert list(np.argsort(predict(art, rows))) == [0, 1, 2]
+
+
+# --- the published site ---------------------------------------------------------------
+
+def test_division_file_names_match_the_frontends_rule():
+    # frontend/src/api.js builds the same names: lower-case, non-alphanumerics to "-".
+    assert slug("Women's Strawweight") == "women-s-strawweight"
+    assert slug("Light Heavyweight") == "light-heavyweight"
 
 
 # --- the narrator's fact check -------------------------------------------------------

@@ -8,6 +8,15 @@ const STATUS = {
   scored: 'Results in',
 };
 
+// Cards are dated in New York, where forecasts lock on fight day.
+const fightDay = () => new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York' })
+  .format(new Date());
+
+function statusOf(date, scored, bouts) {
+  if (date > fightDay()) return 'upcoming';
+  return scored > 0 && scored === bouts ? 'scored' : 'locked';
+}
+
 const dec2 = (v) => v.toFixed(2);
 const pct = (v) => `${Math.round(v * 100)}%`;
 const feet = (v) => `${Math.floor(v / 12)}'${Math.round(v % 12)}"`;
@@ -161,7 +170,8 @@ function FightCard({ bout }) {
 /** Nearest card still to be settled, else the most recent one. */
 function defaultCard(cards) {
   if (!cards?.length) return null;
-  return (cards.find((c) => c.status !== 'scored') || cards[cards.length - 1]).id;
+  const open = cards.find((c) => statusOf(c.date, c.scored, c.bouts) !== 'scored');
+  return (open || cards[cards.length - 1]).id;
 }
 
 export default function Fights() {
@@ -169,12 +179,15 @@ export default function Fights() {
   const cards = useApi(() => api.cards(), []);
   const selected = eventId || defaultCard(cards.data);
   const card = useApi(() => (selected ? api.card(selected) : Promise.resolve(null)), [selected]);
+  const meta = useApi(() => api.meta().catch(() => null), []);
 
   if (cards.error) return <div className="state error">{cards.error}</div>;
   if (cards.loading) return <div className="state">Loading cards…</div>;
   if (!cards.data.length) return <div className="state">No upcoming cards listed yet.</div>;
 
   const ev = card.data?.event;
+  const status = ev && statusOf(ev.date, card.data.bouts.filter((b) => b.result).length,
+                                card.data.bouts.length);
   return (
     <>
       <nav className="card-strip" aria-label="Cards">
@@ -196,7 +209,14 @@ export default function Fights() {
               {fullDate(ev.date)} · {card.data.bouts.length} fights
             </div>
             <h1>{ev.name}</h1>
-            <p><span className={`status status-${ev.status}`}>{STATUS[ev.status]}</span></p>
+            <p>
+              <span className={`status status-${status}`}>{STATUS[status]}</span>
+              {meta.data?.updated && (
+                <span className="updated">
+                  Updated {fullDate(meta.data.updated, { weekday: 'long', day: 'numeric', month: 'long' })}
+                </span>
+              )}
+            </p>
           </header>
           <div className="bouts">
             {card.data.bouts.map((bout) => <FightCard key={bout.id} bout={bout} />)}
