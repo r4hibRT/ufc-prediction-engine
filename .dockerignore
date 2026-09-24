@@ -1,0 +1,12 @@
+.git
+.env
+.idea
+.vscode
+logs
+notes
+tests
+scripts
+**/__pycache__
+frontend/node_modules
+frontend/dist
+src/engine/voice.py
